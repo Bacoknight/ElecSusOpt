@@ -202,8 +202,39 @@ def compareConvergence():
     the average convergence per evalutation.
     """
 
+    problem = pg.problem(figureOfMerit())
+    noParticles = 10
+    seed = random.get_data(data_type='uint16', array_length=1)[0]
+    algoList = [pg.sea(gen = 5, seed = seed),
+                pg.bee_colony(gen = 5, seed = seed, limit = 10),
+                pg.cmaes(gen = 5, seed = seed),
+                pg.simulated_annealing(n_T_adj = 1, seed = seed),
+                pg.sade(gen = 5, seed = seed)]
 
-    return
+    champList = []
+    
+    for algo in algoList:
+
+        pgAlgo = pg.algorithm(algo)
+        pgAlgo.set_verbosity(1)
+
+        algoName = pgAlgo.get_name()
+        print("Starting algorithm: " + algoName)
+
+        pop = pg.population(problem, noParticles)
+        pop = pgAlgo.evolve(pop)
+
+        champVal = pop.champion_f
+        print("Algorithm complete. Best FoM: " + str(champVal))
+        champList.append(champVal)
+
+        log = np.array(pgAlgo.extract(type(algo)).get_log())
+        print(log)
+        plt.plot(log[:,1], -1 * log[:,2], label = algoName)
+
+    plt.show()
+
+    return champList
     
 if __name__ == '__main__':
     print("Running test cases...")
@@ -214,4 +245,4 @@ if __name__ == '__main__':
     # plt.xlabel("Function Evaluations")
     # plt.ylabel("Figure of Merit (FoM)")
     # plt.show()
-    compareTimes()
+    compareConvergence()
