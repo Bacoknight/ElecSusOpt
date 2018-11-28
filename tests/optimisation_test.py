@@ -8,19 +8,18 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import pygmo as pg
-import quantumrandom as random
 from elecsus import elecsus_methods as elecsus
 from scipy.integrate import simps as integrate
 
 
-#We begin by generating a class that defines the problem to be solved.
+# We begin by generating a class that defines the problem to be solved.
 class figureOfMerit(object):
 
     def fitness(self, x):
         # MANDATORY: The fitness function is the function to be optimised. The returned value must be array-like (wrap it in []).
         # The input x is a multidimensional array of values i.e x = [x0, x1, ...., xN] depending on the dimension of the function (defined in get_bounds).
         # Detuning range.
-        d = np.arange(-100000, 100000, 10) # MHz
+        d = np.arange(-10000, 10000, 10) # MHz
 
         # Input parameters. Those represented by the input array x will be optimised.
         #elecsus_params = {'Bfield':x[0], 'rb85frac':0, 'Btheta':x[1], 'lcell':75e-3, 'T':x[2], 'Dline':'D2', 'Elem':'Rb'}
@@ -97,49 +96,41 @@ def decorator(originalFitness):
 # # print(bStrength)
 # # print(FoMs)
 
+# plt.plot(bStrength1, FoMs1, '-o', color='m')
+# plt.plot(bStrength2, FoMs2, '-o', color='c')
 
-def newmethod476():
-    bRange = np.linspace(0, 1e4, num=1000)
+
+def OptPlaneGraph():
+
+    bRange = np.linspace(0, 1e4, num=10)
     FoMList = []
-    detuning = np.arange(-100000, 100000, 5)
+    detuning = np.arange(-10000, 10000, 10)
+
     for b in bRange:
-        p_dict = {'Bfield':b, 'rb85frac':0, 'Btheta':23.62413798, 'lcell':75e-3, 'T':97.07244311, 'Dline':'D2', 'Elem':'Rb'}
+
+        x = [230, 83, 126]
+        p_dict = {'Bfield':b, 'rb85frac':72.17, 'Btheta':x[1], 'lcell':5e-3, 'T':x[2], 'Dline':'D2', 'Elem':'Rb'}
         [Iy] = elecsus.calculate(detuning, [1,0,0], p_dict, outputs=['Iy'])
         ENBW = integrate(Iy, x=detuning/1e3)/np.amax(Iy)
         FoMList.append(np.amax(Iy)/ENBW)
 
+    fig, ax = plt.subplots()
+    fig.set_size_inches(19.20, 10.80)
     plt.plot(bRange, FoMList, color='c')
 
-    #plt.plot(bStrength1, FoMs1, '-o', color='m')
-    #plt.plot(bStrength2, FoMs2, '-o', color='c')
+    plt.xlabel("B field (G)")
+    plt.xlim(0, 10000)
+    plt.ylim(bottom=0)
+    plt.ylabel(r"FoM (GHz$^{-1}$)")
 
-    plt.show()
-
-newmethod476()
-
-
-def VisualiseOptimisation(problem, algorithm, noParticles):
-    
-    logs = []
-
-    algo = pg.algorithm(algorithm)
-    algo.set_verbosity(1)
-    print("Algorithm: " + algo.get_name())
-    pop = pg.population(problem, noParticles)
-    startTime = time.time()
-
-    pop = algo.evolve(pop)
-
-    print("Elapsed time: {} seconds".format(time.time() - startTime))
-    logs.append(algo.extract(type(algorithm)).get_log())
-    avg_log = np.average(logs,0)
-    plt.plot(avg_log[:,1],-1*avg_log[:,2] , label=algo.get_name())
-
-    #plt.show()
+    figName = str(p_dict["Elem"]) + "_" + str(p_dict["Dline"]) + "_" + "varyB" + "_" + str(p_dict["T"]) + "_" + str(p_dict["Btheta"]) + ".pdf"
+    fig.tight_layout()
+    plt.savefig(figName)
+    print("Image saved as: " + figName)
 
     return
 
-def compareTimes():
+def CompareTimes():
     """
     This function is used to show the user how fast a certain optimisation method takes.
     Each algorithm will be timed for 1000 function evaluations, INCLUDING SETUP TIME.
@@ -151,7 +142,7 @@ def compareTimes():
 
     problem = pg.problem(figureOfMerit())
     noParticles = 20
-    seed = random.get_data(data_type='uint16', array_length=1)[0]
+    seed = np.random.randint(1e6)
     algoList = [pg.sea(gen = 1000, seed = seed),
                 pg.bee_colony(gen = 25, seed = seed, limit = 10),
                 pg.cmaes(gen = 51, seed = seed),
@@ -183,21 +174,26 @@ def compareTimes():
     noAlgos = len(nameList)
 
     fig, ax = plt.subplots()
+    fig.set_size_inches(19.20, 10.80)
 
     index = np.arange(noAlgos)
 
     barChart = ax.bar(index, timeList)
 
-    ax.set_xlabel("Algorithm")
+    ax.set_xlabel("Algorithm name")
     ax.set_ylabel("Time for 1000 function evaluations (s)")
+    ax.set_xticks(index)
     ax.set_xticklabels(algoList)
 
     fig.tight_layout()
-    plt.show()
+    plt.ylim(bottom=0)
+    figName = "algo_time_compare.pdf"
+    plt.savefig(figName)
+    print("Image saved as: " + figName)
 
     return timeList
 
-def compareConvergence():
+def CompareConvergence():
     """
     This function is used to show the user the optimal value found after 1000 function evaluations.
     Just one of a few criterion used to determine which algorithm is the best.
@@ -209,7 +205,7 @@ def compareConvergence():
 
     problem = pg.problem(figureOfMerit())
     noParticles = 20
-    seed = random.get_data(data_type='uint16', array_length=1)[0]
+    seed = np.random.randint(1e6)
     algoList = [pg.sea(gen = 1000, seed = seed),
                 pg.bee_colony(gen = 25, seed = seed, limit = 10),
                 pg.cmaes(gen = 51, seed = seed),
@@ -217,6 +213,8 @@ def compareConvergence():
                 pg.sade(gen = 50, seed = seed)]
 
     champList = []
+    fig, ax = plt.subplots()
+    fig.set_size_inches(19.20, 10.80)
     
     for algo in algoList:
 
@@ -234,20 +232,32 @@ def compareConvergence():
         champList.append(champVal)
 
         log = np.array(pgAlgo.extract(type(algo)).get_log())
-        plt.plot(log[:,1], -1 * log[:,2], label = algoName)
+        if "nnealing" in algoName:
+            # We are testing Simulated Annealing, which as a different log structure.
+            plt.plot(log[:,0], -1 * log[:,1], label = algoName)
+        else:
+            plt.plot(log[:,1], -1 * log[:,2], label = algoName)
 
     plt.legend()
-    plt.show()
+
+    ax.set_xlabel("Function evaluations")
+    ax.set_ylabel("FoM")
+
+    fig.tight_layout()
+    figName = "algo_converge_compare.pdf"
+    plt.ylim(bottom=0)
+    plt.xlim(left=0)
+    plt.savefig(figName)
+    print("Image saved as: " + figName)
 
     return champList
     
 if __name__ == '__main__':
     print("Running test cases...")
-    # VisualiseOptimisation(problem, pg.bee_colony(gen=100), 10)
-    # VisualiseOptimisation(problem, pg.cmaes(gen=100), 10)
+    OptPlaneGraph()
+    # timeList = CompareTimes()
+    # champList = CompareConvergence()
+    # efficiencyList = np.divide(champList, timeList)
 
-    # plt.legend()
-    # plt.xlabel("Function Evaluations")
-    # plt.ylabel("Figure of Merit (FoM)")
-    # plt.show()
-    #compareConvergence()
+    # print("Convergence per unit time list: \n")
+    # print(efficiencyList)

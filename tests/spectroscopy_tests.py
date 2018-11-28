@@ -47,11 +47,11 @@ def FourStepGraph():
 	- The transmission.
 	"""
 	# Define the frequency range to be inspected in MHz.
-	detuning = np.arange(-100000,100000,10)
+	detuning = np.arange(-10000,10000,10)
 
 	# Define the experimental parameters.
-	x = [733.00326761, 23.62413798, 97.07244311]
-	p_dict = {'Bfield':x[0], 'rb85frac':0, 'Btheta':x[1], 'lcell':75e-3, 'T':x[2], 'Dline':'D2', 'Elem':'Rb'}
+	x = [230, 83, 126]
+	p_dict = {'Bfield':x[0], 'rb85frac':72.17, 'Btheta':x[1], 'lcell':5e-3, 'T':x[2], 'Dline':'D2', 'Elem':'Rb'}
 	
 	# Get the intensity of light perpendicular to the input light (assuming the setup has two crossed polarisers surrounding the filter).
 	# [1,0,0] means the incoming light has an E field aligned along the x-axis only.
@@ -77,10 +77,11 @@ def FourStepGraph():
 	peakFreqMinus = detuning[peakIndicesMinus]
 	peakAlphaMinus = absorptionValsMinus[peakIndicesMinus]
 	deltaN = np.array(phaseShiftValsPlus - phaseShiftValsMinus)
-	phaseArray = deltaN * 75e-3 * np.pi * np.add(detuning, centreFreqR87)/speedLight
+	phaseArray = deltaN * centreKR87 * 1e6/(2 * np.pi * 1e3) # Units of pi * 1e3, meaning integers have the worst output, whereas half-integers have the best.
 
 	# Set up the plot.
 	fig = plt.figure("Transmission buildup plot")
+	fig.set_size_inches(19.20, 10.80)
 
 	ax1 = plt.subplot(4,1,1)
 	ax2 = plt.subplot(4,1,3, sharex=ax1)
@@ -97,7 +98,9 @@ def FourStepGraph():
 	ax2.plot(detuning/1e3, absorptionValsPlus, 'r--', color='c', lw=2, label=r'$\sigma^{+}$')
 	ax2.plot(detuning/1e3, phaseShiftValsPlus, color='c', lw=2)
 	ax4.plot(detuning/1e3, deltaN, color='navy')
-	ax5.plot(detuning/1e3, phaseArray, color='red')
+	ax5.plot(detuning/1e3, phaseArray, color='navy')
+	ax5.axhline(2, color='red', label=r'$\phi = \pi$')
+	ax5.axhline(1.0005, color='green', label=r'$\phi = \frac{\pi}{2}$')
 
 	#Note, the following code will not work on Hamilton as it requires a later version of SciPy.
 	markerline, stemlines, baseline = ax3.stem(peakFreqPlus/1e3, peakAlphaPlus, '-.', label=r'$\sigma^{+}$')
@@ -119,14 +122,15 @@ def FourStepGraph():
 	ax3.set_xlabel('Detuning (GHz)')
 	ax1.set_ylabel('Transmission')
 	ax2.set_ylabel(r'$n_{Im}, n_{Re}$')
-	ax5.set_ylabel('Phase shift (Radians)')
+	ax5.set_ylabel(r'Phase shift ($1000 \pi$)')
 	ax3.set_ylabel('Relative Transition Strength')
 	ax4.set_ylabel(r'$n_{+, Re} - n_{-, Re}$')
 
 	ax2.legend(loc="upper center")
 	ax3.legend(loc="upper center")
+	ax5.legend(loc="lower center")
 	
-	ax2.set_xlim(-100,100)
+	ax2.set_xlim(-10,10)
 	ax3.set_ylim(0)
 	ax1.set_ylim(0)
 
@@ -146,8 +150,11 @@ def FourStepGraph():
 	print("ENBW: " + str(ENBW))
 	print("FOM: " + str(FOM))
 	print("-----------------")
+
+	figName = str(p_dict["Elem"]) + "_" + str(p_dict["Dline"]) + "_" + str(p_dict["Bfield"]) + "_" + str(p_dict["T"]) + "_" + str(p_dict["Btheta"]) + ".pdf"
+	plt.savefig(figName)
+	print("Image saved as: " + figName)
 	
-	plt.show()
 	
 def OptSurfaceGraph():
 	"""
@@ -189,4 +196,4 @@ def OptSurfaceGraph():
 if __name__ == '__main__':
 	print('Running Test Cases...')
 	FourStepGraph()
-	OptSurfaceGraph()
+	#OptSurfaceGraph()
