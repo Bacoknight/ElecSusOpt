@@ -97,21 +97,25 @@ def decorator(originalFitness):
 # # print(bStrength)
 # # print(FoMs)
 
-# # bRange = np.linspace(0, 1e4, num=100)
-# # FoMList = []
-# # detuning = np.arange(-100000, 100000, 10)
-# # for b in bRange:
-# #     p_dict = {'Bfield':b, 'rb85frac':0, 'Btheta':23.62413798, 'lcell':75e-3, 'T':97.07244311, 'Dline':'D2', 'Elem':'Rb'}
-# #     [Iy] = elecsus.calculate(detuning, [1,0,0], p_dict, outputs=['Iy'])
-# #     ENBW = integrate(Iy, x=detuning/1e3)/np.amax(Iy)
-# #     FoMList.append(np.amax(Iy)/ENBW)
 
-# # plt.plot(bRange, FoMList, color='c')
+def newmethod476():
+    bRange = np.linspace(0, 1e4, num=1000)
+    FoMList = []
+    detuning = np.arange(-100000, 100000, 5)
+    for b in bRange:
+        p_dict = {'Bfield':b, 'rb85frac':0, 'Btheta':23.62413798, 'lcell':75e-3, 'T':97.07244311, 'Dline':'D2', 'Elem':'Rb'}
+        [Iy] = elecsus.calculate(detuning, [1,0,0], p_dict, outputs=['Iy'])
+        ENBW = integrate(Iy, x=detuning/1e3)/np.amax(Iy)
+        FoMList.append(np.amax(Iy)/ENBW)
 
-# plt.plot(bStrength1, FoMs1, '-o', color='m')
-# #plt.plot(bStrength2, FoMs2, '-o', color='c')
+    plt.plot(bRange, FoMList, color='c')
 
-# plt.show()
+    #plt.plot(bStrength1, FoMs1, '-o', color='m')
+    #plt.plot(bStrength2, FoMs2, '-o', color='c')
+
+    plt.show()
+
+newmethod476()
 
 
 def VisualiseOptimisation(problem, algorithm, noParticles):
@@ -146,13 +150,13 @@ def compareTimes():
     """
 
     problem = pg.problem(figureOfMerit())
-    noParticles = 10
+    noParticles = 20
     seed = random.get_data(data_type='uint16', array_length=1)[0]
-    algoList = [pg.sea(gen = 10, seed = seed),
-                pg.bee_colony(gen = 10, seed = seed, limit = 10),
-                pg.cmaes(gen = 10, seed = seed),
-                #pg.simulated_annealing(n_T_adj = 1, seed = seed),
-                pg.sade(gen = 10, seed = seed)]
+    algoList = [pg.sea(gen = 1000, seed = seed),
+                pg.bee_colony(gen = 25, seed = seed, limit = 10),
+                pg.cmaes(gen = 51, seed = seed),
+                pg.simulated_annealing(n_T_adj = 10, seed = seed),
+                pg.sade(gen = 50, seed = seed)]
 
     timeList = []
     nameList = []
@@ -160,6 +164,7 @@ def compareTimes():
     for algo in algoList:
 
         algo = pg.algorithm(algo)
+        algo.set_verbosity(1)
 
         algoName = algo.get_name()
         print("Starting timing for: " + algoName)
@@ -203,13 +208,13 @@ def compareConvergence():
     """
 
     problem = pg.problem(figureOfMerit())
-    noParticles = 10
+    noParticles = 20
     seed = random.get_data(data_type='uint16', array_length=1)[0]
-    algoList = [pg.sea(gen = 5, seed = seed),
-                pg.bee_colony(gen = 5, seed = seed, limit = 10),
-                pg.cmaes(gen = 5, seed = seed),
-                pg.simulated_annealing(n_T_adj = 1, seed = seed),
-                pg.sade(gen = 5, seed = seed)]
+    algoList = [pg.sea(gen = 1000, seed = seed),
+                pg.bee_colony(gen = 25, seed = seed, limit = 10),
+                pg.cmaes(gen = 51, seed = seed),
+                pg.simulated_annealing(n_T_adj = 10, seed = seed),
+                pg.sade(gen = 50, seed = seed)]
 
     champList = []
     
@@ -229,9 +234,9 @@ def compareConvergence():
         champList.append(champVal)
 
         log = np.array(pgAlgo.extract(type(algo)).get_log())
-        print(log)
         plt.plot(log[:,1], -1 * log[:,2], label = algoName)
 
+    plt.legend()
     plt.show()
 
     return champList
@@ -245,4 +250,4 @@ if __name__ == '__main__':
     # plt.xlabel("Function Evaluations")
     # plt.ylabel("Figure of Merit (FoM)")
     # plt.show()
-    compareConvergence()
+    #compareConvergence()
