@@ -55,7 +55,7 @@ def FourStepGraph():
 	
 	# Get the intensity of light perpendicular to the input light (assuming the setup has two crossed polarisers surrounding the filter).
 	# [1,0,0] means the incoming light has an E field aligned along the x-axis only.
-	spectrumOutput = get_spectra(detuning, [1,0,0], p_dict, outputs=['Iy', 'ChiPlus', 'ChiMinus'])
+	spectrumOutput = get_spectra(detuning, [0,1,0], p_dict, outputs=['Iy', 'ChiPlus', 'ChiMinus'])
 
 	Iy = spectrumOutput[0]
 
