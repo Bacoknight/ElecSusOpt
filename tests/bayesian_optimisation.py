@@ -2,6 +2,7 @@ import numpy as np
 from scipy.integrate import simps as integrate
 from elecsus import elecsus_methods as elecsus
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 from bayes_opt import BayesianOptimization
 import time
 from tqdm import tqdm
@@ -462,6 +463,37 @@ def ExploreVsExploit():
 
         print(exploreScore)
 
+        return
+
+def AnimateEThetaSensitivity():
+        """
+        This function will animate the change in transmission and FoM as the incident electric field angle changes.
+        This will be used to show how sensitive the system is to this change. We start at the optimum angle determined by the literature.
+        """
+        thetaVals = []
+        thetaVals.extend(np.geomspace(2, 6, 10))
+        thetaVals.extend(np.geomspace(6, 10, 10))
+
+        transmissionList = []
+        FoMList = []
+
+        for Etheta in tqdm(thetaVals):
+                elecsusParams = {'Bfield':230, 'rb85frac':72.17, 'Btheta':np.deg2rad(83), 'Etheta':np.deg2rad(Etheta), 'lcell':5e-3, 'T':126, 'Dline':'D2', 'Elem':'Rb'}
+                transmissionList.append(ProduceSpectrum(globalDetuning, elecsusParams, False))
+                FoMList.append([CalculateFoM(globalDetuning, elecsusParams)])
+
+        fig, ax = plt.subplots()
+        ax.set(xlim = (-1e4, 1e4), ylim = (0, 1.0))
+        line = ax.plot(globalDetuning, transmissionList[0])[0]
+
+        def animate(i):
+                line.set_ydata(transmissionList[i])
+        
+        animator = FuncAnimation(fig, animate, frames = len(transmissionList))
+
+        plt.draw()
+        plt.show()
+
 
 if __name__ == "__main__":
         print("Running test cases...")
@@ -481,10 +513,13 @@ if __name__ == "__main__":
         # Extend to 4D, now including the E field angle.
         #TestOpt4D()
 
+        # Animate the sensitivity change of the electric field angle, Etheta.
+        AnimateEThetaSensitivity()
+
         # Below we look into the algorithm deeper.
 
         # Compare acquisition functions.
         #CompareAcqFuncs()
 
         # See how random exploration affects the algorithms effectiveness.
-        ExploreVsExploit()
+        #ExploreVsExploit()
