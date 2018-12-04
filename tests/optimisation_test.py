@@ -11,9 +11,10 @@ import numpy as np
 import pygmo as pg
 from elecsus import elecsus_methods as elecsus
 from scipy.integrate import simps as integrate
+from bayes_opt import BayesianOptimization
 
 
-# We begin by generating a class that defines the problem to be solved.
+# We begin by generating a class that defines the problem to be solved. Used for Pygmo
 class figureOfMerit(object):
 
     def fitness(self, x):
@@ -66,40 +67,33 @@ def decorator(originalFitness):
 
     return newFitness
 
-# print("Problem loading...")
-# problem = pg.problem(pg.decorator_problem(figureOfMerit(), fitness_decorator=decorator))
-# print("Problem loaded. Obtaining random seed...")
-# seed = random.get_data(data_type='uint16', array_length=1)[0]
+# Objective function. Used by Bayesian optimisation.
+def FoMGen(bField):
 
-# # Use cmaes or sea.
-# print("Seed obtained, value: " + str(seed) + ". Planning algorithm...")
-# algo = pg.algorithm(pg.simulated_annealing(n_T_adj = 1, seed = seed))
-# algo.set_verbosity(1)   
-# pop = pg.population(problem, 1)
-# print("Timer starting.")
-# startTime = time.time()
+        # Detuning range.
+        d = np.arange(-10000, 10000, 10) # MHz
 
-# pop = algo.evolve(pop)
+        # Input parameters. Those represented by the input array x will be optimised.
+        elecsus_params = {'Bfield':bField, 'rb85frac':72.17, 'Btheta':83, 'lcell':5e-3, 'T':126, 'Dline':'D2', 'Elem':'Rb'}
 
-# print("Elapsed time: {} seconds".format(time.time() - startTime))
+        [Iy] = elecsus.calculate(d, [1,0,0], elecsus_params, outputs=['Iy'])
+        maxIy = max(Iy)
+        ENBW = integrate(Iy, x=d/1e3)/maxIy
+        FoM = maxIy/ENBW
 
-# print(pop.champion_f) 
-# print(pop.champion_x)
+        return(FoM)
 
-# print("Steps taken: " + str(inputVals))
+def BayesianOpt():
 
-# bStrength1 = np.array(inputVals)[::5,0]
-# FoMs1 = -1 * np.array(inputVals)[::5,1]
+    # Define parameter bounds.
+    pbounds = {'bField': (0, 1e4)}
+    # Create the optimiser.
+    optimiser = BayesianOptimization(f=FoMGen, pbounds=pbounds, verbose=0, random_state=1)
 
-# # bStrength2 = np.array(inputVals)[1::2,0]
-# # FoMs2 = -1 * np.array(inputVals)[1::2,1]
+    optimiser.maximize(init_points=10, n_iter=90)
 
-# # print(bStrength)
-# # print(FoMs)
 
-# plt.plot(bStrength1, FoMs1, '-o', color='m')
-# plt.plot(bStrength2, FoMs2, '-o', color='c')
-
+    return optimiser.res
 
 def OptPlaneGraph():
     """
@@ -148,9 +142,9 @@ def CompareTimes():
     """
 
     problem = pg.problem(figureOfMerit())
-    noParticles = 20
+    noParticles = 10
     seed = np.random.randint(1e6)
-    algoList = [pg.sea(gen = 200, seed = seed),
+    algoList = [pg.sea(gen = 100, seed = seed),
                 pg.bee_colony(gen = 5, seed = seed, limit = 10),
                 pg.cmaes(gen = 11, seed = seed),
                 pg.simulated_annealing(n_T_adj = 1, seed = seed),
@@ -161,21 +155,28 @@ def CompareTimes():
 
     for algo in algoList:
 
-        algo = pg.algorithm(algo)
-        algo.set_verbosity(1)
+        algo1 = pg.algorithm(algo)
+        algo1.set_verbosity(1)
 
-        algoName = algo.get_name()
+        algoName = str(algo1.get_name())
         print("Starting timing for: " + algoName)
         startTime = time.time()
 
         pop = pg.population(problem, noParticles)
-        pop = algo.evolve(pop)
+        pop = algo1.evolve(pop)
 
         elapsedTime = time.time() - startTime
         print("Algorithm complete. Elapsed time: {} seconds".format(elapsedTime))
 
         timeList.append(elapsedTime)
         nameList.append(algoName)
+
+    # Test Bayesian Optimisation.
+    startTime = time.time()
+    BayesianOpt()
+    elapsedTime = time.time() - startTime
+    timeList.append(elapsedTime)
+    nameList.append("Bayesian Optimisation")
 
     # Plot bar graph.
     noAlgos = len(nameList)
@@ -211,9 +212,9 @@ def CompareConvergence():
     """
 
     problem = pg.problem(figureOfMerit())
-    noParticles = 20
+    noParticles = 10
     seed = np.random.randint(1e6)
-    algoList = [pg.sea(gen = 200, seed = seed),
+    algoList = [pg.sea(gen = 100, seed = seed),
                 pg.bee_colony(gen = 5, seed = seed, limit = 10),
                 pg.cmaes(gen = 11, seed = seed),
                 pg.simulated_annealing(n_T_adj = 1, seed = seed),
@@ -244,6 +245,15 @@ def CompareConvergence():
             plt.plot(log[:,0], -1 * log[:,1], label = algoName)
         else:
             plt.plot(log[:,1], -1 * log[:,2], label = algoName)
+
+    # Test Bayesian Optimisation.
+    bayesFitness = []
+    bayesIteration = []
+    for i, res in enumerate(BayesianOpt()):
+        bayesIteration.append(i)
+        bayesFitness.append(res["target"])
+
+    plt.plot(bayesIteration, bayesFitness, label = "Bayesian Optimisation")
 
     plt.legend()
 
