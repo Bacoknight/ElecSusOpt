@@ -4,6 +4,7 @@ from elecsus import elecsus_methods as elecsus
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from bayes_opt import BayesianOptimization
+from bayes_opt import UtilityFunction
 import time
 from tqdm import tqdm
 
@@ -13,10 +14,8 @@ optimal experimental parameters for a given atomic filter.
 """
 
 # Here we define some global variables so that it is easier to change it for all functions.
-
 # Detuning used for all tests.
 globalDetuning = np.arange(-10000, 10000, 10) # MHz
-
 
 def ProduceSpectrum(detuning, params, toPlot=False):
         """
@@ -171,6 +170,8 @@ def OptGraph1D():
 
         plt.xlim(0, 1e4)
         plt.ylim(ymin = 0)
+        plt.xlabel("Magnetic field strength (Gauss)")
+        plt.ylabel(r"FoM (GHz$^{-1}$)")
 
         plt.show()
 
@@ -360,6 +361,39 @@ def CompareAcqFuncs():
 
         return
 
+def CompareKappaXi():
+        """
+        Each acquisition function depends on two parameters: kappa and xi. This function explores how the success of the algorithm depends on these values. 
+        """
+
+        xiRange = np.linspace(1, 10, num = 2)
+        kappaRange = np.linspace(1, 10, num = 2)
+        seed = np.random.randint(1, 1e4)
+
+        bestFom = np.empty((xiRange.size, kappaRange.size))
+
+        for i in tqdm(range(xiRange.size)):
+                for j in range(kappaRange.size):
+
+                        inputBounds = {"Bfield": (0, 1e4)}
+                        optimiser = BayesianOptimization(BayesianObjective1D, inputBounds, random_state = seed, verbose = 0)
+
+                        optimiser.maximize(init_points = 2, n_iter = 3, acq = "poi", kappa = kappaRange[j], xi = xiRange[i])
+                        
+                        bestFom[i, j] = optimiser.max["target"]
+
+        # Start plotting the figure.
+        fig = plt.figure()
+        plot = fig.subplots()
+        im = plot.imshow(bestFom, extent = (xiRange[0], xiRange[-1], kappaRange[0], kappaRange[-1]), origin = "lower")
+
+        fig.colorbar(im)
+
+        plt.show()
+
+        return
+
+
 def EasomFunction(x1, x2):
         """
         The Easom function is used to test the Bayesian optimisation algorithm, as it has similar features to the FoM objective function - namely a sharp peak
@@ -385,6 +419,7 @@ def StuckmanFunction(x1, x2):
         """
         This function features discontinuities and relies on random numbers so is quite strange. A great test function.
         The only variables are x1, x2. The function will peak at (2.0, 5.0) by construction.
+        DEPRECATED: We will assume no discontinuities.
         """
 
         # We will fix the values of the 'random' variables here to make the results more predictable.
@@ -410,57 +445,62 @@ def StuckmanFunction(x1, x2):
         else:
                 return 0
 
-def ExploreVsExploit():
+def Schaffer2Function(x1, x2):
+        """
+        Another test function, which is very jagged around the maximum. Maximum of 0 at (0, 0), and we search in the square
+        -100 < x1, x2 < 100
+        """
+
+        return -1 * (0.5 + (np.square(np.sin(np.square(x1) - np.square(x2))) - 0.5)/np.square(1 + 0.001 * np.square(x1) + np.square(x2)))
+
+def ExploreVsExploit(seedNumber):
         """
         This function will show how important the random exploration of the function is before starting the fitting. To do this, 
         the test functions (defined above) as optimised for 10 different seeds, with a different ratio of random evaluations to 
-        algorithm iterations. For each test, 100 function evaluations are made.
+        algorithm iterations. For each test, 100 function evaluations are made. The Probability of Improvement acquisition function
+        is used due to its success in ElecSus (see CompareAcqFuncs()).
         """
 
-        seedList = [np.random.randint(1, 1e4) for i in range(3)]
+        seedList = [np.random.randint(1, 1e4) for i in range(seedNumber)]
         exploreList = [1, 2, 5, 10, 20, 25, 50, 75, 90, 99, 100]
 
         # Define the search space for each function.
         easomBounds = {"x1": (-100, 100), "x2": (-100, 100)}
         xsyBounds = {"x1": (-10, 10), "x2": (-10, 10)}
-        stuckmanBounds = {"x1": (0, 10), "x2": (0, 10)}
-
-        # Define the Stuckman function max for easy referral.
-        stuckmanMax = StuckmanFunction(2.0, 5.0)
+        schafferBounds = {"x1": (-100, 100), "x2": (-100, 100)}
 
         exploreScore = [0] * len(exploreList)
-        print (exploreScore)
 
-        for index, exploreNo in enumerate(exploreList):
-                print("Testing for " + str(exploreNo) + " random search point(s)...")
-                for seed in seedList:
+        for index, exploreNo in enumerate(tqdm(exploreList)):
+                #print("Testing for " + str(exploreNo) + " random search point(s)...")
+                for seed in tqdm(seedList):
 
                         # Optimise the Easom function.
-                        optimiserEasom = BayesianOptimization(f = EasomFunction, pbounds = easomBounds, random_state = seed, verbose = 1)
+                        optimiserEasom = BayesianOptimization(f = EasomFunction, pbounds = easomBounds, random_state = seed, verbose = 0)
                         optimiserEasom.maximize(init_points = exploreNo, n_iter = (100 - exploreNo), acq = "poi")
 
                         # Optimise the Xin She Yang 4th function.
-                        optimiserXSY = BayesianOptimization(f = XinSheYang4Function, pbounds = xsyBounds, random_state = seed, verbose = 1)
+                        optimiserXSY = BayesianOptimization(f = XinSheYang4Function, pbounds = xsyBounds, random_state = seed, verbose = 0)
                         optimiserXSY.maximize(init_points = exploreNo, n_iter = (100 - exploreNo), acq = "poi")
 
-                        # Optimise the Stuckman function.
-                        optimiserStuckman = BayesianOptimization(f = StuckmanFunction, pbounds = stuckmanBounds, random_state = seed, verbose = 1)
-                        optimiserStuckman.maximize(init_points = exploreNo, n_iter = (100 - exploreNo), acq = "poi")
-
+                        # Optimise the Schaffer 2nd function.
+                        optimiserSchaffer = BayesianOptimization(f = Schaffer2Function, pbounds = schafferBounds, random_state = seed, verbose = 0)
+                        optimiserSchaffer.maximize(init_points = exploreNo, n_iter = (100 - exploreNo), acq = "poi")
                         
                         # Check if the optimum was reached for each function.
-                        if np.isclose(optimiserEasom.max["target"], 1):
+                        if np.isclose(optimiserEasom.max["target"], 1, rtol = 1.e-3):
                                 # The algorithm was successful, add a point to it.
                                 exploreScore[index] += 1
                         
-                        if np.isclose(optimiserXSY.max["target"], 1):
+                        if np.isclose(optimiserXSY.max["target"], 1, rtol = 1.e-3):
                                 # The algorithm was successful, add a point to it.
                                 exploreScore[index] += 1
 
-                        if np.isclose(optimiserStuckman.max["target"], stuckmanMax):
+                        if np.isclose(optimiserSchaffer.max["target"], 0, rtol = 1.e-3):
                                 # The algorithm was successful, add a point to it.
                                 exploreScore[index] += 1
 
+        print("Final score:")
         print(exploreScore)
 
         return
@@ -468,11 +508,14 @@ def ExploreVsExploit():
 def AnimateEThetaSensitivity():
         """
         This function will animate the change in transmission and FoM as the incident electric field angle changes.
-        This will be used to show how sensitive the system is to this change. We start at the optimum angle determined by the literature.
+        This will be used to show how sensitive the system is to this change. We include at the optimum angle as determined by the literature.
         """
+
         thetaVals = []
-        thetaVals.extend(np.geomspace(2, 6, 10))
-        thetaVals.extend(np.geomspace(6, 10, 10))
+        thetaVals.extend(np.geomspace(2, 6, 50))
+        thetaVals.extend(np.geomspace(6, 10, 50))
+        thetaVals = list(set(thetaVals))
+        thetaVals.sort()
 
         transmissionList = []
         FoMList = []
@@ -482,17 +525,151 @@ def AnimateEThetaSensitivity():
                 transmissionList.append(ProduceSpectrum(globalDetuning, elecsusParams, False))
                 FoMList.append([CalculateFoM(globalDetuning, elecsusParams)])
 
-        fig, ax = plt.subplots()
-        ax.set(xlim = (-1e4, 1e4), ylim = (0, 1.0))
-        line = ax.plot(globalDetuning, transmissionList[0])[0]
+        fig = plt.figure("Sensitivity Animation")
+        ax = plt.subplot(2, 1, 1)
+        ax2 = plt.subplot(2, 1, 2)
+        ax.set(xlim = (-1e4, 1e4), ylim = (0, 0.75))
+        ax2.set(xlim = (2, 10), ylim = (np.min(FoMList), np.max(FoMList)))
+        ax.set_xlabel("Detuning")
+        ax.set_ylabel("Transmission")
+        ax2.set_xlabel("Etheta")
+        ax2.set_ylabel("FoM")
+
+        # Plot static objects.
+        ax2.axvline(x = 6, color = "m")
+        ax2.axhline(y = FoMList[thetaVals.index(6)], color = "m")
+        # The following assumes theta = 6 is always in the array, as it should be.
+        ax.plot(globalDetuning, transmissionList[thetaVals.index(6)], color = "m", linestyle = "dashed")
+
+        # Create objects which will be updated.
+        transLine = ax.plot(globalDetuning, transmissionList[0])[0]
+        infoText = ax.text(0.5e4, 0.5, str(thetaVals[0]))
+        FoMLine = ax2.plot(0, 0)[0]
+
+        FoMx, FoMy = [], []
 
         def animate(i):
-                line.set_ydata(transmissionList[i])
+                # Define what the graph does on each frame.
+                if i == 0:
+                        FoMx.clear()
+                        FoMy.clear()
+                FoMx.append(thetaVals[i])
+                FoMy.append(FoMList[i])
+                transLine.set_ydata(transmissionList[i])
+                infoText.set_text("E theta = " + str(thetaVals[i]) + "\n FoM = " + str(FoMList[i][0]))
+                FoMLine.set_data(FoMx, FoMy)
+        
         
         animator = FuncAnimation(fig, animate, frames = len(transmissionList))
 
         plt.draw()
         plt.show()
+
+        return
+
+def AnimateBayesianOpt1D(numIters):
+        """
+        This method will plot the 'thinking' behind the Bayesian optimisation algorithm, in one dimension.
+        We pick the magnetic field as our variable as it is the least computationally cumbersome.
+        """
+
+        # Define parameters used for the optimisation algorithm.
+        acqKappa = 3
+        acqXi = 0.5
+
+        # Start by plotting the objective function being optimised. This could take a while.
+        bVals = np.linspace(0, 1e4, num = 50)
+
+        print("Plotting objective function...")
+        FoMList = []
+
+        for bField in tqdm(bVals):
+                FoMList.append(BayesianObjective1D(bField))
+
+        # Begin the figure plot.
+        fig = plt.figure("Optimisation Animation")
+
+        fomAxis = plt.subplot(2, 1, 1)
+        acqAxis = plt.subplot(2, 1, 2)
+
+        # Create optimisers.
+        inputBounds = {"Bfield": (0, 1e4)}
+        optimiser = BayesianOptimization(BayesianObjective1D, inputBounds, random_state = np.random.randint(1, 1e4), verbose = 0)
+
+        # Initialise optimisation with 1 random point.
+        optimiser.maximize(init_points = 1, n_iter = 0, acq = "poi", kappa = acqKappa, xi = acqXi)
+
+        # Use points to generate initial prediction graph data, which will obviously be terrible.
+        mean, stdDev = optimiser._gp.predict(bVals.reshape(-1, 1), return_std = True)
+        # The utility function is used to choose the next point to query. It is an important part of the algorithm.
+        utilFunction = UtilityFunction(kind = "poi", kappa = acqKappa, xi = acqXi)
+        util = utilFunction.utility(bVals.reshape(-1, 1), optimiser._gp, 0)
+        predictB, predictFoM = bVals[np.argmax(util)], np.max(util)
+        
+        # Create lists to store objects at each iteration.
+        # Observed points. To be marked.
+        obsList = [(optimiser.space.params.flatten(), optimiser.space.target)]
+        # How the optimiser sees the function, and its uncertainty.
+        gpList = [mean]
+        # How the optimiser will pick its next point, and the point it picked.
+        utilList = [(util, predictB, predictFoM)]
+        # Store the polygons representing the confidence levels at each iteration.
+        confidenceList = [fomAxis.fill_between(bVals, mean + stdDev, mean - stdDev, alpha = 0.3, visible = False)]
+
+        print("Preparing animation...")
+
+        # Iterate the optimiser to see how it evolves.
+        for iteration in tqdm(range(numIters)):
+                # Run the same code as above.
+                optimiser.maximize(init_points = 0, n_iter = 1, acq = "poi", kappa = acqKappa, xi = acqXi)
+
+                mean, stdDev = optimiser._gp.predict(bVals.reshape(-1, 1), return_std = True)
+                util = utilFunction.utility(bVals.reshape(-1, 1), optimiser._gp, 0)
+                predictB, predictFoM = bVals[np.argmax(util)], np.max(util)
+
+                # Add the obtained values to the various lists.
+                obsList.append((optimiser.space.params.flatten(), optimiser.space.target))
+                gpList.append(mean)
+                utilList.append((util, predictB, predictFoM))
+                confidenceList.append(fomAxis.fill_between(bVals, mean + stdDev, mean - stdDev, alpha = 0.3, visible = False))
+
+        """
+        Once that for loop is over, we will have all the data required for the animation. The data will not be produced
+        on the fly as it would be too computationally expensive to complete between frames.
+        """
+
+        fomAxis.set(xlim = (0, 1e4), ylim = (-0.5, 1.1))
+        acqAxis.set(xlim = (0, 1e4), ylim = (0, 3))
+        fomAxis.set_xlabel("Magnetic field strength (Gauss)")        
+        acqAxis.set_xlabel("Magnetic field strength (Gauss)")
+        fomAxis.set_ylabel("FoM")
+        acqAxis.set_ylabel("Acquisition function value")
+
+        # Plot the functions that won't change with each frame.
+        fomAxis.plot(bVals, FoMList)
+
+        # Plot the changing graphs.
+        meanLine = fomAxis.plot(bVals, gpList[0])[0]
+        acqLine = acqAxis.plot(bVals, utilList[0][0])[0]
+        probedScat = fomAxis.scatter(obsList[0][0], obsList[0][1])
+        predScat = acqAxis.scatter(utilList[0][1], utilList[0][2])
+        confidenceList[0].set_visible(True)
+
+        def animate(i):
+                # Define what the graph does on each frame.
+                meanLine.set_ydata(gpList[i])
+                acqLine.set_ydata(utilList[i][0])
+                probedScat.set_offsets(np.c_[obsList[i][0], obsList[i][1]])
+                predScat.set_offsets(np.c_[utilList[i][1], utilList[i][2]])
+                confidenceList[i - 1].set_visible(False)
+                confidenceList[i].set_visible(True)
+        
+        animator = FuncAnimation(fig, animate, frames = len(obsList), interval = 1e3)
+
+        plt.draw()
+        plt.show()
+
+        return
 
 
 if __name__ == "__main__":
@@ -514,12 +691,18 @@ if __name__ == "__main__":
         #TestOpt4D()
 
         # Animate the sensitivity change of the electric field angle, Etheta.
-        AnimateEThetaSensitivity()
+        #AnimateEThetaSensitivity()
 
         # Below we look into the algorithm deeper.
+
+        # See how the algorithm thinks.
+        #AnimateBayesianOpt1D(30)
 
         # Compare acquisition functions.
         #CompareAcqFuncs()
 
+        # Compare the effects of kappa and xi.
+        CompareKappaXi()
+
         # See how random exploration affects the algorithms effectiveness.
-        #ExploreVsExploit()
+        #ExploreVsExploit(3)
