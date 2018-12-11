@@ -1,11 +1,11 @@
-import numpy as np
-from scipy.integrate import simps as integrate
-from elecsus import elecsus_methods as elecsus
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-from bayes_opt import BayesianOptimization
-from bayes_opt import UtilityFunction
 import time
+
+import matplotlib.pyplot as plt
+import numpy as np
+from bayes_opt import BayesianOptimization, UtilityFunction
+from elecsus import elecsus_methods as elecsus
+from matplotlib.animation import FuncAnimation, writers
+from scipy.integrate import simps as integrate
 from tqdm import tqdm
 
 """
@@ -15,7 +15,7 @@ optimal experimental parameters for a given atomic filter.
 
 # Here we define some global variables so that it is easier to change it for all functions.
 # Detuning used for all tests.
-globalDetuning = np.arange(-10000, 10000, 10) # MHz
+globalDetuning = np.arange(-20000, 20000, 10) # MHz
 
 def ProduceSpectrum(detuning, params, toPlot=False):
         """
@@ -295,7 +295,7 @@ def TestOpt4D():
         """
 
         # First we must define the bounds over which the algorithm will search.
-        inputBounds = {"Bfield": (0, 1e4), "Btheta": (0,90), "Etheta": (0,90), "temp": (20, 400)}
+        inputBounds = {"Bfield": (0, 0.2e4), "Btheta": (0,90), "Etheta": (0,90), "temp": (20, 400)}
 
         # Start timing.
         print("Beginning optimisation for 4D...")
@@ -303,12 +303,12 @@ def TestOpt4D():
 
         # Start the optimisation algorithm.
         optimiser = BayesianOptimization(f = BayesianObjective4D, pbounds = inputBounds, random_state = np.random.randint(1, 1e4), verbose = 2)
-        optimiser.maximize(init_points = 200, n_iter = 800)
+        optimiser.maximize(init_points = 200, n_iter = 800, acq = "poi")
 
         # Print results.
         elapsedTime = time.time() - startTime
         print("Optimisation complete!")
-        print("Elapsed time: " + str(elapsedTime))
+        print("Elapsed time (minutes): " + str(elapsedTime/60))
         print("Optimal result: " + str(optimiser.max["target"]))
         print("Obtained with values: " + str(optimiser.max["params"]))
 
@@ -334,8 +334,8 @@ def CompareAcqFuncs():
         # Create a list containing the names for each acquisition function.
         functionList = {"ucb": "Upper Confidence Bound", "ei": "Expected Improvement", "poi": "Probability of Improvement"}
 
-        # Set up the problem for a 3D optimisation, as that includes angles which seem to be tough to optimise in general.
-        inputBounds = {"Bfield": (0, 1e4), "Btheta": (0, 90), "temp": (20, 400)}
+        # Set up the problem for a 4D optimisation, as that includes angles which seem to be tough to optimise in general.
+        inputBounds = {"Bfield": (0, 0.2e4), "Btheta": (0,90), "Etheta": (0,90), "temp": (20, 400)}
         # Note that the same seed is used for each optimisation, such that the starting position is always the same.
         seed = np.random.randint(1, 1e4)
 
@@ -343,8 +343,8 @@ def CompareAcqFuncs():
 
                 print("Using acquisition function: " + name)
                 # We need to start a new optimiser from scratch each time.
-                optimiser = BayesianOptimization(f = BayesianObjective3D, pbounds = inputBounds, random_state = seed, verbose = 2)
-                optimiser.maximize(init_points = 30, n_iter = 70, acq = function)
+                optimiser = BayesianOptimization(f = BayesianObjective4D, pbounds = inputBounds, random_state = seed, verbose = 2)
+                optimiser.maximize(init_points = 50, n_iter = 150, acq = function)
                 indexList = []
                 paramList = []
                 for index, result in enumerate(optimiser.res):
@@ -366,8 +366,8 @@ def CompareKappaXi():
         Each acquisition function depends on two parameters: kappa and xi. This function explores how the success of the algorithm depends on these values. 
         """
 
-        xiRange = np.linspace(1, 10, num = 2)
-        kappaRange = np.linspace(1, 10, num = 2)
+        xiRange = np.linspace(0, 10, num = 20)
+        kappaRange = np.linspace(0, 10, num = 20)
         seed = np.random.randint(1, 1e4)
 
         bestFom = np.empty((xiRange.size, kappaRange.size))
@@ -392,7 +392,6 @@ def CompareKappaXi():
         plt.show()
 
         return
-
 
 def EasomFunction(x1, x2):
         """
@@ -529,11 +528,11 @@ def AnimateEThetaSensitivity():
         ax = plt.subplot(2, 1, 1)
         ax2 = plt.subplot(2, 1, 2)
         ax.set(xlim = (-1e4, 1e4), ylim = (0, 0.75))
-        ax2.set(xlim = (2, 10), ylim = (np.min(FoMList), np.max(FoMList)))
-        ax.set_xlabel("Detuning")
+        ax2.set(xlim = (2, 10), ylim = (np.min(FoMList), 1.01 * np.max(FoMList)))
+        ax.set_xlabel("Detuning (GHz)")
         ax.set_ylabel("Transmission")
         ax2.set_xlabel("Etheta")
-        ax2.set_ylabel("FoM")
+        ax2.set_ylabel(r"FoM (GHz$^{-1}$)")
 
         # Plot static objects.
         ax2.axvline(x = 6, color = "m")
@@ -558,9 +557,17 @@ def AnimateEThetaSensitivity():
                 transLine.set_ydata(transmissionList[i])
                 infoText.set_text("E theta = " + str(thetaVals[i]) + "\n FoM = " + str(FoMList[i][0]))
                 FoMLine.set_data(FoMx, FoMy)
+
+                return transLine, FoMLine, infoText
         
         
         animator = FuncAnimation(fig, animate, frames = len(transmissionList))
+
+        # Set up formatting for the movie files
+        Writer = writers['ffmpeg']
+        writer = Writer(bitrate = 1800)
+
+        animator.save("show_sens.mp4", writer = writer)
 
         plt.draw()
         plt.show()
@@ -574,11 +581,12 @@ def AnimateBayesianOpt1D(numIters):
         """
 
         # Define parameters used for the optimisation algorithm.
-        acqKappa = 3
-        acqXi = 0.5
+        acqFunc = "poi"
+        acqKappa = 5
+        acqXi = 0.1
 
         # Start by plotting the objective function being optimised. This could take a while.
-        bVals = np.linspace(0, 1e4, num = 50)
+        bVals = np.linspace(0, 0.2e4, num = 100)
 
         print("Plotting objective function...")
         FoMList = []
@@ -589,21 +597,21 @@ def AnimateBayesianOpt1D(numIters):
         # Begin the figure plot.
         fig = plt.figure("Optimisation Animation")
 
-        fomAxis = plt.subplot(2, 1, 1)
         acqAxis = plt.subplot(2, 1, 2)
+        fomAxis = plt.subplot(2, 1, 1, sharex = acqAxis)
 
         # Create optimisers.
-        inputBounds = {"Bfield": (0, 1e4)}
+        inputBounds = {"Bfield": (0, 0.2e4)}
         optimiser = BayesianOptimization(BayesianObjective1D, inputBounds, random_state = np.random.randint(1, 1e4), verbose = 0)
 
         # Initialise optimisation with 1 random point.
-        optimiser.maximize(init_points = 1, n_iter = 0, acq = "poi", kappa = acqKappa, xi = acqXi)
+        optimiser.maximize(init_points = 1, n_iter = 0, acq = acqFunc, kappa = acqKappa, xi = acqXi)
 
         # Use points to generate initial prediction graph data, which will obviously be terrible.
         mean, stdDev = optimiser._gp.predict(bVals.reshape(-1, 1), return_std = True)
         # The utility function is used to choose the next point to query. It is an important part of the algorithm.
-        utilFunction = UtilityFunction(kind = "poi", kappa = acqKappa, xi = acqXi)
-        util = utilFunction.utility(bVals.reshape(-1, 1), optimiser._gp, 0)
+        utilFunction = UtilityFunction(kind = acqFunc, kappa = acqKappa, xi = acqXi)
+        util = utilFunction.utility(bVals.reshape(-1, 1), optimiser._gp, 1.2)
         predictB, predictFoM = bVals[np.argmax(util)], np.max(util)
         
         # Create lists to store objects at each iteration.
@@ -613,15 +621,15 @@ def AnimateBayesianOpt1D(numIters):
         gpList = [mean]
         # How the optimiser will pick its next point, and the point it picked.
         utilList = [(util, predictB, predictFoM)]
-        # Store the polygons representing the confidence levels at each iteration.
-        confidenceList = [fomAxis.fill_between(bVals, mean + stdDev, mean - stdDev, alpha = 0.3, visible = False)]
+        # Store the polygons representing the confidence levels at each iteration. We multiply the standard deviation by 1.96 to get the 95% confidence interval.
+        confidenceList = [fomAxis.fill_between(bVals, mean + (1.96 * stdDev), mean - (1.96 * stdDev), alpha = 0.3, visible = False, color = "c")]
 
         print("Preparing animation...")
 
         # Iterate the optimiser to see how it evolves.
         for iteration in tqdm(range(numIters)):
                 # Run the same code as above.
-                optimiser.maximize(init_points = 0, n_iter = 1, acq = "poi", kappa = acqKappa, xi = acqXi)
+                optimiser.maximize(init_points = 0, n_iter = 1, acq = acqFunc, kappa = acqKappa, xi = acqXi)
 
                 mean, stdDev = optimiser._gp.predict(bVals.reshape(-1, 1), return_std = True)
                 util = utilFunction.utility(bVals.reshape(-1, 1), optimiser._gp, 0)
@@ -631,40 +639,48 @@ def AnimateBayesianOpt1D(numIters):
                 obsList.append((optimiser.space.params.flatten(), optimiser.space.target))
                 gpList.append(mean)
                 utilList.append((util, predictB, predictFoM))
-                confidenceList.append(fomAxis.fill_between(bVals, mean + stdDev, mean - stdDev, alpha = 0.3, visible = False))
+                confidenceList.append(fomAxis.fill_between(bVals, mean + (1.96 * stdDev), mean - (1.96 * stdDev), alpha = 0.3, visible = False, color = "c"))
 
         """
         Once that for loop is over, we will have all the data required for the animation. The data will not be produced
         on the fly as it would be too computationally expensive to complete between frames.
         """
 
-        fomAxis.set(xlim = (0, 1e4), ylim = (-0.5, 1.1))
-        acqAxis.set(xlim = (0, 1e4), ylim = (0, 3))
-        fomAxis.set_xlabel("Magnetic field strength (Gauss)")        
-        acqAxis.set_xlabel("Magnetic field strength (Gauss)")
+        fomAxis.set(xlim = (0, 0.2e4), ylim = (-0.5, 1.1))
+        acqAxis.set(xlim = (0, 0.2e4), ylim = (0, 1.1))
         fomAxis.set_ylabel("FoM")
-        acqAxis.set_ylabel("Acquisition function value")
+        acqAxis.set_ylabel("Probability of Improvement")
+        acqAxis.set_xlabel("Magnetic field strength (Gauss)") 
 
         # Plot the functions that won't change with each frame.
-        fomAxis.plot(bVals, FoMList)
+        fomAxis.plot(bVals, FoMList, color = "b", linewidth = 3)
 
-        # Plot the changing graphs.
-        meanLine = fomAxis.plot(bVals, gpList[0])[0]
-        acqLine = acqAxis.plot(bVals, utilList[0][0])[0]
-        probedScat = fomAxis.scatter(obsList[0][0], obsList[0][1])
-        predScat = acqAxis.scatter(utilList[0][1], utilList[0][2])
+        # Plot the changing graphs with their inital values.
+        meanLine = fomAxis.plot(bVals, gpList[0], color = "k", linestyle = "--")[0]
+        acqLine = acqAxis.plot(bVals, utilList[0][0], color = "purple")[0]
+        probedScat = fomAxis.scatter(obsList[0][0], obsList[0][1], marker = "v", color = "r")
+        predScat = acqAxis.scatter(utilList[0][1], utilList[0][2], marker = "^", color = "r")
         confidenceList[0].set_visible(True)
 
         def animate(i):
                 # Define what the graph does on each frame.
                 meanLine.set_ydata(gpList[i])
                 acqLine.set_ydata(utilList[i][0])
-                probedScat.set_offsets(np.c_[obsList[i][0], obsList[i][1]])
+                probedScat.set_offsets(np.c_[obsList[i - 1][0], obsList[i - 1][1]])
                 predScat.set_offsets(np.c_[utilList[i][1], utilList[i][2]])
                 confidenceList[i - 1].set_visible(False)
                 confidenceList[i].set_visible(True)
+
+                return meanLine, acqLine, probedScat, predScat, confidenceList[i]
         
-        animator = FuncAnimation(fig, animate, frames = len(obsList), interval = 1e3)
+        animator = FuncAnimation(fig, animate, frames = len(obsList), interval = 1e3, blit = True)
+
+        
+        # Set up formatting for the movie files
+        Writer = writers['ffmpeg']
+        writer = Writer(bitrate = 1800)
+
+        animator.save("show_opt.mp4", writer = writer)
 
         plt.draw()
         plt.show()
@@ -677,6 +693,10 @@ if __name__ == "__main__":
         # Test to make sure program is running okay.
         #TestFoM()
 
+        # Produce a spectrum.
+        inputParams = {'Bfield':1080.0789523352246, 'rb85frac':72.17, 'Btheta':np.deg2rad(69.89652705834405), 'Etheta':np.deg2rad(34.97124945258859), 'lcell':5e-3, 'T':166.15038048241425, 'Dline':'D2', 'Elem':'Rb'}
+        ProduceSpectrum(globalDetuning, inputParams, True)
+
         # Confirm results of paper by varying B field strength. Note the OptGraph1D function is *very* long as it evaluates hundreds/thousands of FoM's.
         #TestOpt1D()
         #OptGraph1D()
@@ -688,7 +708,7 @@ if __name__ == "__main__":
         #TestOpt3D()
 
         # Extend to 4D, now including the E field angle.
-        #TestOpt4D()
+        TestOpt4D()
 
         # Animate the sensitivity change of the electric field angle, Etheta.
         #AnimateEThetaSensitivity()
@@ -696,13 +716,13 @@ if __name__ == "__main__":
         # Below we look into the algorithm deeper.
 
         # See how the algorithm thinks.
-        #AnimateBayesianOpt1D(30)
+        #AnimateBayesianOpt1D(59)
 
         # Compare acquisition functions.
         #CompareAcqFuncs()
 
         # Compare the effects of kappa and xi.
-        CompareKappaXi()
+        #CompareKappaXi()
 
         # See how random exploration affects the algorithms effectiveness.
         #ExploreVsExploit(3)

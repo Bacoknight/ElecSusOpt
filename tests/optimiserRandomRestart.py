@@ -26,7 +26,7 @@ import lmfit as lm
 
 import sys, os, time, copy, glob
 
-import cPickle as pickle
+import _pickle as pickle
 
 
 
@@ -286,7 +286,7 @@ def fomToverENBW(spectrumDetuning, p_dict, targetDetuning=None):
 
 		# in this case ignore the error and return zeros
 
-		print '\t\tWARNING: ElecSus error encountered - returning zero FOM value'
+		print ('\t\tWARNING: ElecSus error encountered - returning zero FOM value')
 
 		return 0.
 
@@ -360,9 +360,9 @@ def testENBW():
 
 	
 
-	print 'ENBW (MHz):', ENBW
+	print('ENBW (MHz):', ENBW)
 
-	print 'FOM (MHz^-1):', FOM
+	print('FOM (MHz^-1):', FOM)
 
 	
 
@@ -384,13 +384,13 @@ def fomFitFunction(spectrumDetuning, T, Bfield, Btheta, thetaE,
 
 	if iterationNumber is not None:
 
-		print 'Iteration number:\t', iterationNumber+1, ' / ', totalIterations
+		print ('Iteration number:\t', iterationNumber+1, ' / ', totalIterations)
 
-		print 'T, B, Btheta, thetaE:\t', T, Bfield, Btheta, thetaE
+		print ('T, B, Btheta, thetaE:\t', T, Bfield, Btheta, thetaE)
 
 	
 
-	print '.', 
+	print ('.')
 
 	p_dict['T'] = T
 
@@ -494,7 +494,7 @@ def generateSpectrum(spectrumDetuning, p_dict):
 
 	"""
 
-	print p_dict
+	print (p_dict)
 
 	
 
@@ -602,7 +602,7 @@ def doSingleOptimisation(guessParamDict, paramBools, paramBounds,
 
 	optFn = os.path.join(save_directory,str(iterationNumber+startingIterationNumber)+'_initial.pkl')
 
-	print optFn
+	print (optFn)
 
 	
 
@@ -648,7 +648,7 @@ def doSingleOptimisation(guessParamDict, paramBools, paramBounds,
 
 	if showGuess is True:
 
-		print 'Pausing optimisation to look at guess parameters. Close the plot window to continue.'
+		print ('Pausing optimisation to look at guess parameters. Close the plot window to continue.')
 
 		fig = plt.figure("Initial parameter spectrum")
 
@@ -680,11 +680,11 @@ def doSingleOptimisation(guessParamDict, paramBools, paramBounds,
 
 	# Run the fit
 
-	print '\tStarting fit running. Current time: ', time.ctime()
+	print ('\tStarting fit running. Current time: ', time.ctime())
 
-	print '\tRandom restart iteration number: ', iterationNumber
+	print ('\tRandom restart iteration number: ', iterationNumber)
 
-	print '\tUsing method: ', method
+	print ('\tUsing method: ', method)
 
 	st = time.clock()
 
@@ -696,21 +696,21 @@ def doSingleOptimisation(guessParamDict, paramBools, paramBounds,
 
 	# print some info on the fit results
 
-	print '\n\tFit Completed. Time elapsed (min): ', (time.clock() - st)/60
+	print ('\n\tFit Completed. Time elapsed (min): ', (time.clock() - st)/60)
 
-	print '\tNumber of function evaluations: ', result.nfev
+	print ('\tNumber of function evaluations: ', result.nfev)
 
-	print '\tFit successful?:\t', result.success
+	print ('\tFit successful?:\t', result.success)
 
 	
 
-	print '\tBest-case parameters:'
+	print ('\tBest-case parameters:')
 
 	best_paramvals = result.params.valuesdict()
 
 	for key in best_paramvals:
 
-		print '\t\t',key,':\t', best_paramvals[key]
+		print ('\t\t',key,':\t', best_paramvals[key])
 
 	
 
@@ -742,16 +742,16 @@ def doSingleOptimisation(guessParamDict, paramBools, paramBounds,
 
 	
 
-	print '\n\Figures of merit:'
+	print ('\n\Figures of merit:')
 
-	print '\t\tMax. Transmission:\t', spec.max()
+	print ('\t\tMax. Transmission:\t', spec.max())
 
-	print '\t\tFWHM (GHz):\t\t', fwhm
+	print ('\t\tFWHM (GHz):\t\t', fwhm)
 
-	print '\t\tENBW (GHz):\t\t', enbw
-
-	print '\t\tFOM (GHz-1):\t\t', fom*1e3
-
+	print ('\t\tENBW (GHz):\t\t', enbw
+)
+	print ('\t\tFOM (GHz-1):\t\t', fom*1e3
+)
 
 
 	# Save calculations to file for further processing and analysis later
@@ -762,7 +762,7 @@ def doSingleOptimisation(guessParamDict, paramBools, paramBounds,
 
 	
 
-	print '\nCalculation saved to pickle file\n\n----------------------------------------------------------'
+	print ('\nCalculation saved to pickle file\n\n----------------------------------------------------------')
 
 	
 
@@ -774,9 +774,7 @@ def doSingleOptimisationMP(args_list):
 
 	""" Multiprocessing-compatible wrapper for doSingleOptimisation() """
 
-	guessParamDict, paramBools, paramBounds, detuningParams, \
-
-		save_directory, iterationNumber, startingIterationNumber  = args_list
+	guessParamDict, paramBools, paramBounds, detuningParams, save_directory, iterationNumber, startingIterationNumber  = args_list
 
 	
 
@@ -848,7 +846,7 @@ class Optimiser():
 
 		except:
 
-			print 'Error occurred when trying to make save directory - probably the directory already exists (no action needed)'
+			print ('Error occurred when trying to make save directory - probably the directory already exists (no action needed)')
 
 			
 
@@ -1050,15 +1048,16 @@ class Optimiser():
 
 		
 
-		print '\n------------------------------------------------------------------------'
+		print ('\n------------------------------------------------------------------------')
 
-		print '\nInitial parameter search completed. Filtered down to '+str(self.optSeeds)+' sets of seed parameters.'
+		print ('\nInitial parameter search completed. Filtered down to '+str(self.optSeeds)+' sets of seed parameters.')
 
-		print 'Initial FOMs are:'
+		print ('Initial FOMs are:')
 
-		for fom in startingFOMs: print '\t',fom*1e3
+		for fom in startingFOMs:
+			print ('\t', fom*1e3)
 
-		print 'Starting optimisation routines...\n'
+		print ('Starting optimisation routines...\n')
 
 	
 
@@ -1126,7 +1125,7 @@ class Optimiser():
 
 		# get results back ...
 
-		print 'Output: \n', output.get()
+		print ('Output: \n', output.get())
 
 		
 
@@ -1144,9 +1143,9 @@ class Optimiser():
 
 		
 
-		print 'Best parameters:'
+		print ('Best parameters:')
 
-		print best_paramvals
+		print (best_paramvals)
 
 		
 
@@ -1206,7 +1205,7 @@ class Optimiser():
 
 		pkl_fns = glob.glob(os.path.join(self.save_directory,'*_optimised.pkl'))
 
-		print pkl_fns
+		print (pkl_fns)
 
 
 
@@ -1244,7 +1243,7 @@ class Optimiser():
 
 		for fom, pkl_fn in zs:
 
-			print fom, pkl_fn
+			print (fom, pkl_fn)
 
 
 
@@ -1258,11 +1257,11 @@ class Optimiser():
 
 		foms = foms[foms<5]
 
-		print 'Cropped:', foms
+		print ('Cropped:', foms)
 
 		
 
-		print pkl_fns
+		print (pkl_fns)
 
 		# plot 4 best cases
 
