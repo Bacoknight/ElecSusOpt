@@ -6,7 +6,7 @@ To do this, we test:
 - Average FoM 'gain' per unit time.
 - Average FoM 'gain' per unit iteration.
 - Absolute best FoM after X iterations.
-This will be tested against the following algorthms:
+Bayesian Optimisation will be tested against the following algorthms:
 - Random Restart Cobyla Optimisation (used in the previous paper).
 - Random Search (to show whether any optimisation algorithm is actually useful).
 - Covariance Matrix Adaptation - Evolutionary Strategy (commonly called CMA-ES, widely popular for black-box problems).
@@ -27,7 +27,8 @@ import lmfit
 globalDetuning = np.arange(-100000, 100000, 10) # MHz
 # Input parameters used for all tests.
 globalParams = {'Bfield':230, 'rb85frac':72.17, 'Btheta':np.deg2rad(83), 'Etheta':np.deg2rad(6), 'lcell':5e-3, 'T':126, 'Dline':'D2', 'Elem':'Rb'}
-
+# Global target FoM. This is used to test for time how long it takes to reproduce a paper value.
+globalFoM = 0.02
 
 def ProduceSpectrum(detuning, params, toPlot=False):
         """
@@ -161,7 +162,7 @@ def Objective5D(bField, temperature, bTheta, eTheta, bPhi):
 
     return CalculateFoM(globalDetuning, elecsusParams)
 
-def StatsBayes(dimension = 1, numIters = 100, numRuns = 1):
+def StatsBayes(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False):
     """
     This function will produce all values required for comparison with other algorithms as defined at the top of the module.
     """
@@ -170,59 +171,120 @@ def StatsBayes(dimension = 1, numIters = 100, numRuns = 1):
     problemList = {
         1: [Objective1D, {"bField": choco.uniform(0, 2000)}],
         2: [Objective2D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400)}],
-        3: [Objective3D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 90)}],
-        4: [Objective4D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 90), "eTheta": choco.uniform(0, 90)}],
-        5: [Objective5D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 90), "eTheta": choco.uniform(0, 90), "bPhi": choco.uniform(0, 90)}]
+        3: [Objective3D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 360)}],
+        4: [Objective4D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 360), "eTheta": choco.uniform(0, 360)}],
+        5: [Objective5D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 360), "eTheta": choco.uniform(0, 360), "bPhi": choco.uniform(0, 360)}]
     }
 
     problem = problemList.get(dimension)
 
     # Set up the database for the chocolate optimiser.
-    connection = choco.SQLiteConnection("sqlite:///optimiser_db.db")
+    connection = choco.SQLiteConnection("sqlite:///bayes_db.db")
 
-    # Define which solver will be used.
-    solver = choco.Bayes(connection, problem[1], utility_function = "ei", n_bootstrap = int(numIters/10), clear_db = True)
+    if paperCompare:
 
-    timeList = []
-    bestFoMList = []
+        timeList = []
+        iterationList = []
 
-    for run in range(numRuns):
+        for run in range(numRuns):
 
-        # Start timing.
-        startTime = time.time()
-        bestFoM = 0
+            # Define which solver will be used.
+            solver = choco.Bayes(connection, problem[1], utility_function = "ei", n_bootstrap = int(np.ceil(numIters/10)), clear_db = True)
 
-        # Start optimisation.
-        for iteration in range(numIters):
+            # Clear the database. TODO: To do this?
+            connection.clear()
 
-            # Make one suggestion.
-            token, nextParams = solver.next()
+            # Start timing.
+            startTime = time.time()
 
-            # Check what FoM this gives. Go negative as this is a minimisation routine.
-            fEval = -1 * problem[0].__call__(**nextParams)
+            # Start optimisation.
+            for iteration in range(numIters):
 
-            # Update best FoM.
-            if fEval < bestFoM:
-                bestFoM = fEval
+                # Make one suggestion.
+                token, nextParams = solver.next()
+
+                # Check what FoM this gives. Go negative as this is a minimisation routine.
+                fEval =  abs(problem[0].__call__(**nextParams))
+
+                # Update best FoM.
+                if fEval >= globalFoM:
+                    # The algorithm has managed to surpass or equal the paper value.
+                    iterationList.append(iteration + 1)
+
+                    # One run complete.
+                    timeElapsed = time.time() - startTime
+                    timeList.append(timeElapsed)
+
+                    break
+                
+                # Tell the optimiser about the result.
+                solver.update(token, fEval)
+
+        # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
+        avgRuntime = np.average(timeList)
+        avgIters = np.average(iterationList)
+        try:
+
+            fastestTime = np.min(timeList)
+
+        except ValueError:
             
-            # Tell the optimiser about the result.
-            solver.update(token, fEval)
+            # List is empty.
+            fastestTime = float('NaN')
 
-        # One run complete.
-        timeElapsed = time.time() - startTime
-        timeList.append(timeElapsed)
-        bestFoMList.append(-1 * bestFoM)
-    
-    # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
-    avgRuntime = np.average(timeList)
-    avgFoM = np.average(bestFoMList)
-    avgFoMPerTime = np.average(np.divide(bestFoMList, timeList))
-    avgFoMPerIter = np.average(np.divide(bestFoMList, numIters))
-    absBestFoM = np.max(bestFoMList)
+        numSuccess = len(iterationList)
+        successRate = numSuccess/numRuns
 
-    return [avgRuntime, avgFoM, avgFoMPerTime, avgFoMPerIter, absBestFoM]
+        return [numSuccess, successRate, avgIters, avgRuntime, fastestTime]
 
-def StatsCMAES(dimension = 1, numIters = 100, numRuns = 1):
+    else:
+
+        timeList = []
+        bestFoMList = []
+
+        for run in range(numRuns):
+
+            # Define which solver will be used.
+            solver = choco.Bayes(connection, problem[1], utility_function = "ei", n_bootstrap = int(np.ceil(numIters/10)), clear_db = True)
+
+            # Clear the database. TODO: To do this?
+            connection.clear()
+
+            # Start timing.
+            startTime = time.time()
+            bestFoM = 0
+
+            # Start optimisation.
+            for iteration in range(numIters):
+
+                # Make one suggestion.
+                token, nextParams = solver.next()
+
+                # Check what FoM this gives. Go negative as this is a minimisation routine.
+                fEval = np.absolute(problem[0].__call__(**nextParams))
+
+                # Update best FoM.
+                if fEval > bestFoM:
+                    bestFoM = fEval
+                
+                # Tell the optimiser about the result.
+                solver.update(token, fEval)
+
+            # One run complete.
+            timeElapsed = time.time() - startTime
+            timeList.append(timeElapsed)
+            bestFoMList.append(bestFoM)
+        
+        # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
+        avgRuntime = np.average(timeList)
+        avgFoM = np.average(bestFoMList)
+        avgFoMPerTime = np.average(np.divide(bestFoMList, timeList))
+        avgFoMPerIter = np.average(np.divide(bestFoMList, numIters))
+        absBestFoM = np.max(bestFoMList)
+
+        return [avgRuntime, avgFoM, avgFoMPerTime, avgFoMPerIter, absBestFoM]
+
+def StatsCMAES(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False):
     """
     This function will produce all values required for comparison with other algorithms as defined at the top of the module.
     Thankfully most algorithms are within the same library so we need only change small amounts.
@@ -240,51 +302,114 @@ def StatsCMAES(dimension = 1, numIters = 100, numRuns = 1):
     problem = problemList.get(dimension)
 
     # Set up the database for the chocolate optimiser.
-    connection = choco.SQLiteConnection("sqlite:///optimiser_db.db")
+    connection = choco.SQLiteConnection("sqlite:///cmaes_db.db")
 
-    # Define which solver will be used.
-    solver = choco.CMAES(connection, problem[1], clear_db = True)
+    if paperCompare:
 
-    timeList = []
-    bestFoMList = []
+        timeList = []
+        iterationList = []
 
-    for run in range(numRuns):
+        for run in range(numRuns):
 
-        # Start timing.
-        startTime = time.time()
-        bestFoM = 0
+            # Define which solver will be used.
+            solver = choco.CMAES(connection, problem[1], clear_db = True)
 
-        # Start optimisation.
-        for iteration in range(numIters):
+            # Clear the database. TODO: To do this?
+            connection.clear()
 
-            # Make one suggestion.
-            token, nextParams = solver.next()
+            # Start timing.
+            startTime = time.time()
 
-            # Check what FoM this gives.
-            fEval = problem[0].__call__(**nextParams)
+            # Start optimisation.
+            for iteration in range(numIters):
 
-            # Update best FoM.
-            if fEval > bestFoM:
-                bestFoM = fEval
+                # Make one suggestion.
+                token, nextParams = solver.next()
+
+                # Check what FoM this gives. Go negative as this is a minimisation routine.
+                fEval = problem[0].__call__(**nextParams)
+
+                # Update best FoM.
+                if fEval >= globalFoM:
+                    # The algorithm has managed to surpass or equal the paper value.
+                    iterationList.append(iteration + 1)
+
+                    # One run complete.
+                    timeElapsed = time.time() - startTime
+                    timeList.append(timeElapsed)
+
+                    break
+                
+                # Tell the optimiser about the result.
+                solver.update(token, fEval)
+
+
+        
+        # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
+        avgRuntime = np.average(timeList)
+        avgIters = np.average(iterationList)
+        try:
+
+            fastestTime = np.min(timeList)
+
+        except ValueError:
             
-            # Tell the optimiser about the result.
-            solver.update(token, fEval)
+            # List is empty.
+            fastestTime = float('NaN')
 
-        # One run complete.
-        timeElapsed = time.time() - startTime
-        timeList.append(timeElapsed)
-        bestFoMList.append(bestFoM)
-    
-    # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
-    avgRuntime = np.average(timeList)
-    avgFoM = np.average(bestFoMList)
-    avgFoMPerTime = np.average(np.divide(bestFoMList, timeList))
-    avgFoMPerIter = np.average(np.divide(bestFoMList, numIters))
-    absBestFoM = np.max(bestFoMList)
+        numSuccess = len(iterationList)
+        successRate = numSuccess/numRuns
 
-    return [avgRuntime, avgFoM, avgFoMPerTime, avgFoMPerIter, absBestFoM]
+        return [numSuccess, successRate, avgIters, avgRuntime, fastestTime]
 
-def StatsRandom(dimension = 1, numIters = 100, numRuns = 1):
+    else:
+
+        timeList = []
+        bestFoMList = []
+
+        for run in range(numRuns):
+
+            # Define which solver will be used.
+            solver = choco.CMAES(connection, problem[1], clear_db = True)
+
+            # Clear the database. TODO: To do this?
+            connection.clear()
+
+            # Start timing.
+            startTime = time.time()
+            bestFoM = 0
+
+            # Start optimisation.
+            for iteration in range(numIters):
+
+                # Make one suggestion.
+                token, nextParams = solver.next()
+
+                # Check what FoM this gives.
+                fEval = problem[0].__call__(**nextParams)
+
+                # Update best FoM.
+                if fEval > bestFoM:
+                    bestFoM = fEval
+                
+                # Tell the optimiser about the result.
+                solver.update(token, fEval)
+
+            # One run complete.
+            timeElapsed = time.time() - startTime
+            timeList.append(timeElapsed)
+            bestFoMList.append(bestFoM)
+        
+        # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
+        avgRuntime = np.average(timeList)
+        avgFoM = np.average(bestFoMList)
+        avgFoMPerTime = np.average(np.divide(bestFoMList, timeList))
+        avgFoMPerIter = np.average(np.divide(bestFoMList, numIters))
+        absBestFoM = np.max(bestFoMList)
+
+        return [avgRuntime, avgFoM, avgFoMPerTime, avgFoMPerIter, absBestFoM]
+
+def StatsRandom(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False):
     """
     This function will produce all values required for comparison with other algorithms as defined at the top of the module.
     Thankfully most algorithms are within the same library so we need only change small amounts.
@@ -302,50 +427,110 @@ def StatsRandom(dimension = 1, numIters = 100, numRuns = 1):
     problem = problemList.get(dimension)
 
     # Set up the database for the chocolate optimiser.
-    connection = choco.SQLiteConnection("sqlite:///optimiser_db.db")
+    connection = choco.SQLiteConnection("sqlite:///random_db.db")
 
-    # Define which solver will be used.
-    solver = choco.QuasiRandom(connection, problem[1], clear_db = True, skip = 0, seed = None)
+    if paperCompare:
 
-    timeList = []
-    bestFoMList = []
+        timeList = []
+        iterationList = []
 
-    for run in range(numRuns):
+        for run in range(numRuns):
 
-        # Start timing.
-        startTime = time.time()
-        bestFoM = 0
+            # Define which solver will be used.
+            solver = choco.QuasiRandom(connection, problem[1], clear_db = True, skip = int(np.ceil(numIters/10)), seed = None)
 
-        # Start optimisation.
-        for iteration in range(numIters):
+            # Clear the database. TODO: To do this?
+            connection.clear()
 
-            # Make one suggestion.
-            token, nextParams = solver.next()
+            # Start timing.
+            startTime = time.time()
 
-            # Check what FoM this gives.
-            fEval = problem[0].__call__(**nextParams)
+            # Start optimisation.
+            for iteration in range(numIters):
 
-            # Update best FoM.
-            if fEval > bestFoM:
-                bestFoM = fEval
+                # Make one suggestion.
+                token, nextParams = solver.next()
+
+                # Check what FoM this gives. Go negative as this is a minimisation routine.
+                fEval = problem[0].__call__(**nextParams)
+
+                # Update best FoM.
+                if fEval >= globalFoM:
+                    # The algorithm has managed to surpass or equal the paper value.
+                    iterationList.append(iteration + 1)
+
+                    # One run complete.
+                    timeElapsed = time.time() - startTime
+                    timeList.append(timeElapsed)
+
+                    break
+                    
+                # Tell the optimiser about the result.
+                solver.update(token, fEval)
             
-            # Tell the optimiser about the result.
-            solver.update(token, fEval)
+        # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
+        avgRuntime = np.average(timeList)
+        avgIters = np.average(iterationList)
+        try:
 
-        # One run complete.
-        timeElapsed = time.time() - startTime
-        timeList.append(timeElapsed)
-        bestFoMList.append(bestFoM)
-    
-    # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
-    avgRuntime = np.average(timeList)
-    avgFoM = np.average(bestFoMList)
-    avgFoMPerTime = np.average(np.divide(bestFoMList, timeList))
-    avgFoMPerIter = np.average(np.divide(bestFoMList, numIters))
-    absBestFoM = np.max(bestFoMList)
+            fastestTime = np.min(timeList)
 
-    return [avgRuntime, avgFoM, avgFoMPerTime, avgFoMPerIter, absBestFoM]
+        except ValueError:
 
+            # List is empty.
+            fastestTime = float('NaN')
+
+        numSuccess = len(iterationList)
+        successRate = numSuccess/numRuns
+
+        return [numSuccess, successRate, avgIters, avgRuntime, fastestTime]
+
+    else:
+
+        timeList = []
+        bestFoMList = []
+
+        for run in range(numRuns):
+
+            # Define which solver will be used.
+            solver = choco.QuasiRandom(connection, problem[1], clear_db = True, skip = int(np.ceil(numIters/10)), seed = None)
+
+            # Clear the database. TODO: To do this?
+            connection.clear()
+
+            # Start timing.
+            startTime = time.time()
+            bestFoM = 0
+
+            # Start optimisation.
+            for iteration in range(numIters):
+
+                # Make one suggestion.
+                token, nextParams = solver.next()
+
+                # Check what FoM this gives. Go negative as this is a minimisation routine.
+                fEval = problem[0].__call__(**nextParams)
+
+                # Update best FoM.
+                if fEval > bestFoM:
+                    bestFoM = fEval
+                
+                # Tell the optimiser about the result.
+                solver.update(token, fEval)
+
+            # One run complete.
+            timeElapsed = time.time() - startTime
+            timeList.append(timeElapsed)
+            bestFoMList.append(bestFoM)
+        
+        # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
+        avgRuntime = np.average(timeList)
+        avgFoM = np.average(bestFoMList)
+        avgFoMPerTime = np.average(np.divide(bestFoMList, timeList))
+        avgFoMPerIter = np.average(np.divide(bestFoMList, numIters))
+        absBestFoM = np.max(bestFoMList)
+
+        return [avgRuntime, avgFoM, avgFoMPerTime, avgFoMPerIter, absBestFoM]
 
 def ObjectiveLmFit(inputDict):
     """
@@ -359,10 +544,35 @@ def ObjectiveLmFit(inputDict):
 
     return -1 * CalculateFoM(globalDetuning, elecsusParams)
 
-def StatsCobyla(dimension = 1, numIters = 100, numRuns = 1):
+def StatsCobyla(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False):
     """
     Cobyla is the (local) minimisation method used in the Optics Letters paper regarding arbitrary magnetic field angles. This requires use of the lmfit module (l as in love).
     """
+    compareIterList = []
+    compareTimeList = []
+    startTime = None
+
+    def iter_cb(params, iteration, resid):
+        """
+        What the optimiser does at each iteration.
+        """
+
+        if paperCompare:
+
+            if abs(resid) >= globalFoM:
+
+                # End the fitting and report the time, iterations etc.
+                compareIterList.append(iteration)
+                timeElapsedCompare = time.time() - startTime
+                compareTimeList.append(timeElapsedCompare)
+                
+                return True
+
+        else:
+
+            # Nothing to do here.
+
+            return None
 
     # Define all possible problems, so that the FoM can be evaluated.
     problemList = [Objective1D, Objective2D, Objective3D, Objective4D, Objective5D]
@@ -372,9 +582,10 @@ def StatsCobyla(dimension = 1, numIters = 100, numRuns = 1):
 
     # Initialise the parameters to be varied.
     inputParams = lmfit.Parameters()
+
     # Lists containing important values.
-    timeList = []
     bestFoMList = []
+    timeList = []
     
     for run in range(numRuns):
         # Start timing.
@@ -385,12 +596,13 @@ def StatsCobyla(dimension = 1, numIters = 100, numRuns = 1):
             inputParams.add(allParams[i][0], min = allParams[i][1], max = allParams[i][2], vary = True, value = np.random.uniform(allParams[i][1], allParams[i][2]))
             
         # Perform optimisation.
-        optimiser = lmfit.minimize(ObjectiveLmFit, inputParams, method = "cobyla", options = {"maxiter": numIters})
+        optimiser = lmfit.minimize(ObjectiveLmFit, inputParams, method = "cobyla", options = {"maxiter": numIters}, iter_cb = iter_cb)
 
         # One run complete.
         timeElapsed = time.time() - startTime
         timeList.append(timeElapsed)
         bestParams = optimiser.params.valuesdict()
+
         try:
             # 'Translate' the dictionary to a form understood by the objective functions.
             # NOTE: This may not work if you start shuffling the order of the dimensions being varied.
@@ -406,20 +618,66 @@ def StatsCobyla(dimension = 1, numIters = 100, numRuns = 1):
         bestFoM = problemList[dimension - 1].__call__(**bestParams)
         bestFoMList.append(bestFoM)
 
-    # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
-    avgRuntime = np.average(timeList)
-    avgFoM = np.average(bestFoMList)
-    avgFoMPerTime = np.average(np.divide(bestFoMList, timeList))
-    avgFoMPerIter = np.average(np.divide(bestFoMList, numIters))
-    absBestFoM = np.max(bestFoMList)
+    if paperCompare:
 
-    return [avgRuntime, avgFoM, avgFoMPerTime, avgFoMPerIter, absBestFoM]
+        # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
+        avgRuntime = np.average(compareTimeList)
+        avgIters = np.average(compareIterList)
+        try:
 
+            fastestTime = np.min(compareTimeList)
+            
+        except ValueError:
 
-def StatsMCMC(dimension = 1, numIters = 100, numRuns = 1):
+            # List is empty.
+            fastestTime = float('NaN')
+
+        numSuccess = len(compareIterList)
+        successRate = numSuccess/numRuns
+
+        return [numSuccess, successRate, avgIters, avgRuntime, fastestTime]
+
+    else:
+    
+        # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
+        avgRuntime = np.average(timeList)
+        avgFoM = np.average(bestFoMList)
+        avgFoMPerTime = np.average(np.divide(bestFoMList, timeList))
+        avgFoMPerIter = np.average(np.divide(bestFoMList, numIters))
+        absBestFoM = np.max(bestFoMList)
+
+        return [avgRuntime, avgFoM, avgFoMPerTime, avgFoMPerIter, absBestFoM]
+
+def StatsMCMC(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False):
     """
     Monte-Carlo Markov Chain method, commonly used for optimisation. This requires use of the lmfit module (l as in love).
     """
+
+    startTime = None
+    compareIterList = []
+    compareTimeList = []
+
+    def iter_cb(params, iteration, resid):
+        """
+        What the optimiser does at each iteration.
+        """
+
+        if paperCompare:
+
+            if abs(resid) >= globalFoM:
+
+                # End the fitting and report the time, iterations etc.
+                compareIterList.append(iteration)
+                timeElapsedCompare = time.time() - startTime
+                compareTimeList.append(timeElapsedCompare)
+                
+                return True
+
+        else:
+
+            # Nothing to do here.
+
+            return None
 
     # Define all possible problems, so that the FoM can be evaluated.
     problemList = [Objective1D, Objective2D, Objective3D, Objective4D, Objective5D]
@@ -434,10 +692,10 @@ def StatsMCMC(dimension = 1, numIters = 100, numRuns = 1):
     bestFoMList = []
 
     # Change the MCMC input parameters to ensure the number of iterations is comparable.
-    # Should be much greater than the dimension of the problem. Defaults to 10 walkers if the other value is too small.
-    numWalkers = np.max([dimension * int(numIters/10), 10])
+    # Should be much greater than the dimension of the problem. Defaults to 10 walkers if the other value is too small. The number of walkers must be even.
+    numWalkers = 2 * np.ceil(dimension * np.ceil(numIters/10))
     # Number of steps for each walker to take. Note that one step requires numWalkers * dimension function evaluations. 
-    numSteps = int(numIters/(numWalkers * dimension))
+    numSteps = np.ceil(numIters/(numWalkers * dimension))
     
     for run in range(numRuns):
         # Start timing.
@@ -448,7 +706,7 @@ def StatsMCMC(dimension = 1, numIters = 100, numRuns = 1):
             inputParams.add(allParams[i][0], min = allParams[i][1], max = allParams[i][2], vary = True, value = np.random.uniform(allParams[i][1], allParams[i][2]))
             
         # Perform optimisation.
-        optimiser = lmfit.minimize(ObjectiveLmFit, inputParams, method = "emcee", steps = numSteps, nwalkers = numWalkers)
+        optimiser = lmfit.minimize(ObjectiveLmFit, inputParams, method = "emcee", steps = int(numSteps), nwalkers = int(numWalkers), iter_cb = iter_cb)
 
         # One run complete.
         timeElapsed = time.time() - startTime
@@ -469,14 +727,35 @@ def StatsMCMC(dimension = 1, numIters = 100, numRuns = 1):
         bestFoM = problemList[dimension - 1].__call__(**bestParams)
         bestFoMList.append(bestFoM)
 
-    # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
-    avgRuntime = np.average(timeList)
-    avgFoM = np.average(bestFoMList)
-    avgFoMPerTime = np.average(np.divide(bestFoMList, timeList))
-    avgFoMPerIter = np.average(np.divide(bestFoMList, numIters))
-    absBestFoM = np.max(bestFoMList)
+    if paperCompare:
 
-    return [avgRuntime, avgFoM, avgFoMPerTime, avgFoMPerIter, absBestFoM]
+        # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
+        avgRuntime = np.average(compareTimeList)
+        avgIters = np.average(compareIterList)
+        try:
+
+            fastestTime = np.min(compareTimeList)
+
+        except ValueError:
+
+            # List is empty.
+            fastestTime = float('NaN')
+
+        numSuccess = len(compareIterList)
+        successRate = numSuccess/numRuns
+
+        return [numSuccess, successRate, avgIters, avgRuntime, fastestTime]
+
+    else:
+    
+        # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
+        avgRuntime = np.average(timeList)
+        avgFoM = np.average(bestFoMList)
+        avgFoMPerTime = np.average(np.divide(bestFoMList, timeList))
+        avgFoMPerIter = np.average(np.divide(bestFoMList, numIters))
+        absBestFoM = np.max(bestFoMList)
+
+        return [avgRuntime, avgFoM, avgFoMPerTime, avgFoMPerIter, absBestFoM]
 
 def CompareAlgos(numIters, numRuns):
     """
@@ -490,27 +769,55 @@ def CompareAlgos(numIters, numRuns):
     cobylaList = []
     mcmcList = []
 
-    for dimension in range(maxDim):
+    for dimension in [x + 1 for x in range(maxDim)]:
         print("----------------------------------------------------------------------------------")
-        print("DIMENSION:" + str(dimension + 1))
+        print("DIMENSION: " + str(dimension))
         # Determine the important values for each algorithm.
         print("Bayesian Optimisation:")
-        print(StatsBayes(dimension + 1, numIters, numRuns))
+        print(StatsBayes(dimension, numIters, numRuns))
         print("CMAES:")
-        print(StatsCMAES(dimension + 1, numIters, numRuns))
+        print(StatsCMAES(dimension, numIters, numRuns))
         print("Random:")
-        print(StatsRandom(dimension + 1, numIters, numRuns))
+        print(StatsRandom(dimension, numIters, numRuns))
+        print("Cobyla:")
+        print(StatsCobyla(dimension, numIters, numRuns))
+        print("MCMC:")
+        print(StatsMCMC(dimension, numIters, numRuns))
         print("----------------------------------------------------------------------------------")
-        # Removed for now while it isn't fully finished.
-        cobylaList.append(StatsCobyla(dimension + 1, numIters, numRuns))
-        # Removed for now while it doesn't work.
-        mcmcList.append(StatsMCMC(dimension + 1, numIters, numRuns))
 
     return
+
+def ComparePaperAlgos(numIters, numRuns):
+
+    maxDim = 5
+    bayesList = []
+    cmaesList = []
+    randomList = []
+    cobylaList = []
+    mcmcList = []
+
+    for dimension in [x + 1 for x in range(maxDim)]:
+        print("----------------------------------------------------------------------------------")
+        print("DIMENSION: " + str(dimension))
+        # Determine the important values for each algorithm.
+        print("Bayesian Optimisation:")
+        print(StatsBayes(dimension, numIters, numRuns, True))
+        print("CMAES:")
+        print(StatsCMAES(dimension, numIters, numRuns, True))
+        print("Random:")
+        print(StatsRandom(dimension, numIters, numRuns, True))
+        print("Cobyla:")
+        print(StatsCobyla(dimension, numIters, numRuns, True))
+        print("MCMC:")
+        print(StatsMCMC(dimension, numIters, numRuns, True))
+        print("----------------------------------------------------------------------------------")
+
+    return
+
 
 if __name__ == "__main__":
     # Ensure calculations are being carried out correctly.
     #TestFoM()
 
-    print(StatsMCMC(1, 5, 1))
-    #CompareAlgos(30, 3)
+    #print(StatsBayes(5, 5, 1, True))
+    CompareAlgos(20, 10)
