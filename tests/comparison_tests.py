@@ -21,16 +21,18 @@ import numpy as np
 from scipy.integrate import simps as integrate
 import matplotlib.pyplot as plt
 import lmfit
+from mpi4py import MPI
+import pandas as pd
 
 # Here we define some global variables so that it is easier to change it for all functions.
 # Detuning used for all tests.
-globalDetuning = np.arange(-100000, 100000, 10) # MHz
+globalDetuning = np.arange(-20000, 20000, 10) # MHz
 # Input parameters used for all tests.
-globalParams = {'Bfield':230, 'rb85frac':72.17, 'Btheta':np.deg2rad(83), 'Etheta':np.deg2rad(6), 'lcell':5e-3, 'T':126, 'Dline':'D2', 'Elem':'Rb'}
+globalParams = {'Bfield':230, 'rb85frac':72.17, 'Btheta':np.deg2rad(0), 'Etheta':np.deg2rad(0), 'lcell':5e-3, 'T':126, 'Dline':'D2', 'Elem':'Rb'}
 # Global target FoM. This is used to test for time how long it takes to reproduce a paper value.
-globalFoM = 0.02
+globalFoM = 1.04
 
-def ProduceSpectrum(detuning, params, toPlot=False):
+def ProduceSpectrum(detuning, params, toPlot = False):
         """
         Produce a simple transmission output using ElecSus.
         We always assume that the polariser after the filter is perpendiucular to the input
@@ -51,10 +53,10 @@ def ProduceSpectrum(detuning, params, toPlot=False):
 
         except:
             # There was an issue obtaining the field from ElecSus.
-	        return 0
+	        return np.zeros(len(detuning))
 
         transmittedE =  np.array(J_out * E_out[:2])
-        transmission =  (transmittedE * transmittedE.conjugate()).sum(axis=0)
+        transmission =  (transmittedE * transmittedE.conjugate()).sum(axis = 0)
 
         if toPlot:
                 # Plot the result.
@@ -67,9 +69,19 @@ def CalculateFoM(detuning, params):
 
         # Get the overall transmission.
         transmission = ProduceSpectrum(detuning, params, False)
-
         maxTransmission = np.max(transmission)
-        ENBW = integrate(transmission, detuning)/maxTransmission
+
+        try:
+            ENBW = integrate(transmission, detuning)/maxTransmission
+        except IndexError:
+            print("Index error in determining ENBW! Here is what we tried to integrate:")
+            print("Transmission: " + str(transmission) + ". Size: " + str(len(transmission)) + ". Should be " + str(len(detuning)))
+            print("Detuning: " + str(detuning))
+            print("maxTransmission: " + str(maxTransmission) + ". Should be a single value")
+            print("Input parameters for ElecSus: " + str(params))
+
+            ENBW = 1e24
+        
         FOM = maxTransmission/ENBW # This is in 1/MHz, so we multiply by 1000 for 1/GHz
 
         if np.isnan(FOM):
@@ -171,15 +183,15 @@ def StatsBayes(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False)
     problemList = {
         1: [Objective1D, {"bField": choco.uniform(0, 2000)}],
         2: [Objective2D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400)}],
-        3: [Objective3D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 360)}],
-        4: [Objective4D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 360), "eTheta": choco.uniform(0, 360)}],
-        5: [Objective5D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 360), "eTheta": choco.uniform(0, 360), "bPhi": choco.uniform(0, 360)}]
+        3: [Objective3D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 180)}],
+        4: [Objective4D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 180), "eTheta": choco.uniform(0, 180)}],
+        5: [Objective5D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 180), "eTheta": choco.uniform(0, 180), "bPhi": choco.uniform(0, 180)}]
     }
 
     problem = problemList.get(dimension)
 
     # Set up the database for the chocolate optimiser.
-    connection = choco.SQLiteConnection("sqlite:///bayes_db.db")
+    connection = choco.SQLiteConnection("sqlite:///bayes_db" + str(dimension) + ".db")
 
     if paperCompare:
 
@@ -201,7 +213,13 @@ def StatsBayes(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False)
             for iteration in range(numIters):
 
                 # Make one suggestion.
-                token, nextParams = solver.next()
+                try:
+                    token, nextParams = solver.next()
+                except:
+                    print("Error suggesting a new point. Here are the last set of parameters sampled, and it's returned value:")
+                    print(str(nextParams))
+                    print(str(fEval))
+                    continue
 
                 # Check what FoM this gives. Go negative as this is a minimisation routine.
                 fEval =  abs(problem[0].__call__(**nextParams))
@@ -258,10 +276,16 @@ def StatsBayes(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False)
             for iteration in range(numIters):
 
                 # Make one suggestion.
-                token, nextParams = solver.next()
+                try:
+                    token, nextParams = solver.next()
+                except:
+                    print("Error suggesting a new point. Here are the last set of parameters sampled, and it's returned value:")
+                    print(str(nextParams))
+                    print(str(fEval))
+                    continue
 
                 # Check what FoM this gives. Go negative as this is a minimisation routine.
-                fEval = np.absolute(problem[0].__call__(**nextParams))
+                fEval = abs(problem[0].__call__(**nextParams))
 
                 # Update best FoM.
                 if fEval > bestFoM:
@@ -294,15 +318,15 @@ def StatsCMAES(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False)
     problemList = {
         1: [Objective1D, {"bField": choco.uniform(0, 2000)}],
         2: [Objective2D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400)}],
-        3: [Objective3D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 90)}],
-        4: [Objective4D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 90), "eTheta": choco.uniform(0, 90)}],
-        5: [Objective5D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 90), "eTheta": choco.uniform(0, 90), "bPhi": choco.uniform(0, 90)}]
+        3: [Objective3D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 180)}],
+        4: [Objective4D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 180), "eTheta": choco.uniform(0, 180)}],
+        5: [Objective5D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 180), "eTheta": choco.uniform(0, 180), "bPhi": choco.uniform(0, 180)}]
     }
 
     problem = problemList.get(dimension)
 
     # Set up the database for the chocolate optimiser.
-    connection = choco.SQLiteConnection("sqlite:///cmaes_db.db")
+    connection = choco.SQLiteConnection("sqlite:///cmaes_db" + str(dimension) + ".db")
 
     if paperCompare:
 
@@ -324,7 +348,13 @@ def StatsCMAES(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False)
             for iteration in range(numIters):
 
                 # Make one suggestion.
-                token, nextParams = solver.next()
+                try:
+                    token, nextParams = solver.next()
+                except:
+                    print("Error suggesting a new point. Here are the last set of parameters sampled, and it's returned value:")
+                    print(str(nextParams))
+                    print(str(fEval))
+                    continue
 
                 # Check what FoM this gives. Go negative as this is a minimisation routine.
                 fEval = problem[0].__call__(**nextParams)
@@ -383,7 +413,13 @@ def StatsCMAES(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False)
             for iteration in range(numIters):
 
                 # Make one suggestion.
-                token, nextParams = solver.next()
+                try:
+                    token, nextParams = solver.next()
+                except:
+                    print("Error suggesting a new point. Here are the last set of parameters sampled, and it's returned value:")
+                    print(str(nextParams))
+                    print(str(fEval))
+                    continue
 
                 # Check what FoM this gives.
                 fEval = problem[0].__call__(**nextParams)
@@ -419,15 +455,15 @@ def StatsRandom(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False
     problemList = {
         1: [Objective1D, {"bField": choco.uniform(0, 2000)}],
         2: [Objective2D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400)}],
-        3: [Objective3D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 90)}],
-        4: [Objective4D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 90), "eTheta": choco.uniform(0, 90)}],
-        5: [Objective5D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 90), "eTheta": choco.uniform(0, 90), "bPhi": choco.uniform(0, 90)}]
+        3: [Objective3D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 180)}],
+        4: [Objective4D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 180), "eTheta": choco.uniform(0, 180)}],
+        5: [Objective5D, {"bField": choco.uniform(0, 2000), "temperature": choco.uniform(20, 400), "bTheta": choco.uniform(0, 180), "eTheta": choco.uniform(0, 180), "bPhi": choco.uniform(0, 180)}]
     }
 
     problem = problemList.get(dimension)
 
     # Set up the database for the chocolate optimiser.
-    connection = choco.SQLiteConnection("sqlite:///random_db.db")
+    connection = choco.SQLiteConnection("sqlite:///random_db" + str(dimension) + ".db")
 
     if paperCompare:
 
@@ -437,7 +473,7 @@ def StatsRandom(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False
         for run in range(numRuns):
 
             # Define which solver will be used.
-            solver = choco.QuasiRandom(connection, problem[1], clear_db = True, skip = int(np.ceil(numIters/10)), seed = None)
+            solver = choco.QuasiRandom(connection, problem[1], clear_db = True, skip = int(np.ceil(numIters/10)), seed = np.random.randint(1e4))
 
             # Clear the database. TODO: To do this?
             connection.clear()
@@ -449,10 +485,16 @@ def StatsRandom(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False
             for iteration in range(numIters):
 
                 # Make one suggestion.
-                token, nextParams = solver.next()
+                try:
+                    token, nextParams = solver.next()
+                except:
+                    print("Error suggesting a new point. Here are the last set of parameters sampled, and it's returned value:")
+                    print(str(nextParams))
+                    print(str(fEval))
+                    continue
 
                 # Check what FoM this gives. Go negative as this is a minimisation routine.
-                fEval = problem[0].__call__(**nextParams)
+                fEval = abs(problem[0].__call__(**nextParams))
 
                 # Update best FoM.
                 if fEval >= globalFoM:
@@ -493,7 +535,7 @@ def StatsRandom(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False
         for run in range(numRuns):
 
             # Define which solver will be used.
-            solver = choco.QuasiRandom(connection, problem[1], clear_db = True, skip = int(np.ceil(numIters/10)), seed = None)
+            solver = choco.QuasiRandom(connection, problem[1], clear_db = True, skip = int(np.ceil(numIters/10)), seed = np.random.randint(1e4))
 
             # Clear the database. TODO: To do this?
             connection.clear()
@@ -506,10 +548,16 @@ def StatsRandom(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False
             for iteration in range(numIters):
 
                 # Make one suggestion.
-                token, nextParams = solver.next()
+                try:
+                    token, nextParams = solver.next()
+                except:
+                    print("Error suggesting a new point. Here are the last set of parameters sampled, and it's returned value:")
+                    print(str(nextParams))
+                    print(str(fEval))
+                    continue
 
                 # Check what FoM this gives. Go negative as this is a minimisation routine.
-                fEval = problem[0].__call__(**nextParams)
+                fEval = abs(problem[0].__call__(**nextParams))
 
                 # Update best FoM.
                 if fEval > bestFoM:
@@ -578,7 +626,7 @@ def StatsCobyla(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False
     problemList = [Objective1D, Objective2D, Objective3D, Objective4D, Objective5D]
 
     # Define all parameters for use in lmfit. Each parameter is given a name (exactly the same as in the ElecSus params dict), its minimum value, and its maximum value.
-    allParams = [("Bfield", 0.0, 2000), ("T", 20, 400), ("Btheta", 0, np.pi/2.0), ("Etheta", 0, np.pi/2.0), ("Bphi", 0, np.pi/2.0)]
+    allParams = [("Bfield", 0.0, 2000), ("T", 20, 400), ("Btheta", 0, np.pi), ("Etheta", 0, np.pi), ("Bphi", 0, np.pi)]
 
     # Initialise the parameters to be varied.
     inputParams = lmfit.Parameters()
@@ -683,7 +731,7 @@ def StatsMCMC(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False):
     problemList = [Objective1D, Objective2D, Objective3D, Objective4D, Objective5D]
 
     # Define all parameters for use in lmfit. Each parameter is given a name (exactly the same as in the ElecSus params dict), its minimum value, and its maximum value.
-    allParams = [("Bfield", 0.0, 2000), ("T", 20, 400), ("Btheta", 0, np.pi/2.0), ("Etheta", 0, np.pi/2.0), ("Bphi", 0, np.pi/2.0)]
+    allParams = [("Bfield", 0.0, 2000), ("T", 20, 400), ("Btheta", 0, np.pi), ("Etheta", 0, np.pi), ("Bphi", 0, np.pi)]
 
     # Initialise the parameters to be varied.
     inputParams = lmfit.Parameters()
@@ -706,7 +754,9 @@ def StatsMCMC(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False):
             inputParams.add(allParams[i][0], min = allParams[i][1], max = allParams[i][2], vary = True, value = np.random.uniform(allParams[i][1], allParams[i][2]))
             
         # Perform optimisation.
-        optimiser = lmfit.minimize(ObjectiveLmFit, inputParams, method = "emcee", steps = int(numSteps), nwalkers = int(numWalkers), iter_cb = iter_cb)
+        #optimiser = lmfit.minimize(ObjectiveLmFit, inputParams, method = "emcee", steps = int(numSteps), nwalkers = int(numWalkers), iter_cb = iter_cb)
+        minimiser = lmfit.Minimizer(ObjectiveLmFit, inputParams, iter_cb = iter_cb)
+        optimiser = minimiser.emcee(steps = int(numSteps), nwalkers = int(numWalkers))
 
         # One run complete.
         timeElapsed = time.time() - startTime
@@ -763,13 +813,9 @@ def CompareAlgos(numIters, numRuns):
     """
 
     maxDim = 5
-    bayesList = []
-    cmaesList = []
-    randomList = []
-    cobylaList = []
-    mcmcList = []
 
     for dimension in [x + 1 for x in range(maxDim)]:
+
         print("----------------------------------------------------------------------------------")
         print("DIMENSION: " + str(dimension))
         # Determine the important values for each algorithm.
@@ -788,15 +834,16 @@ def CompareAlgos(numIters, numRuns):
     return
 
 def ComparePaperAlgos(numIters, numRuns):
+    """
+    Compares the algorithms against the literature value of the specific experiment defined in the global parameters.
+    This method will return values is a neat-ish table, but it will be very slow. Refer to ComparePaperMPI for a parallelised version 
+    that's a little sore on the eyes but faster.
+    """
 
     maxDim = 5
-    bayesList = []
-    cmaesList = []
-    randomList = []
-    cobylaList = []
-    mcmcList = []
 
     for dimension in [x + 1 for x in range(maxDim)]:
+
         print("----------------------------------------------------------------------------------")
         print("DIMENSION: " + str(dimension))
         # Determine the important values for each algorithm.
@@ -814,10 +861,112 @@ def ComparePaperAlgos(numIters, numRuns):
 
     return
 
+def CompareMPI(numIters, numRuns):
+    """
+    Compares the algorithms against the literature value of the specific experiment defined in the global parameters.
+    Uses multiple cores thanks to the MPI framework.
+    """
+
+    # Find all the cores being used.
+    comm = MPI.COMM_WORLD
+    
+    # Get the 'name' of each core to refer to them.
+    rank = comm.Get_rank()
+
+    # Create a list of all problems. This is explicitly defined.
+    problemList = [("Bayesian Optimisation, 1D", 1, StatsBayes), ("Bayesian Optimisation, 2D", 2, StatsBayes), ("Bayesian Optimisation, 3D", 3, StatsBayes), ("Bayesian Optimisation, 4D", 4, StatsBayes),
+    ("Bayesian Optimisation, 5D", 5, StatsBayes), ("CMAES, 1D", 1, StatsCMAES), ("CMAES, 2D", 2, StatsCMAES), ("CMAES, 3D", 3, StatsCMAES), ("CMAES, 4D", 4, StatsCMAES),
+    ("CMAES, 5D", 5, StatsCMAES), ("Random Searching, 1D", 1, StatsRandom), ("Random Searching, 2D", 2, StatsRandom), ("Random Searching, 3D", 3, StatsRandom), ("Random Searching, 4D", 4, StatsRandom),
+    ("Random Searching, 5D", 5, StatsRandom), ("Cobyla, 1D", 1, StatsCobyla), ("Cobyla, 2D", 2, StatsCobyla), ("Cobyla, 3D", 3, StatsCobyla), ("Cobyla, 4D", 4, StatsCobyla),
+    ("Cobyla, 5D", 5, StatsCobyla)]#, ("MCMC, 1D", 1, StatsMCMC), ("MCMC, 2D", 2, StatsMCMC), ("MCMC, 3D", 3, StatsMCMC), ("MCMC, 4D", 4, StatsMCMC), ("MCMC, 5D", 5, StatsMCMC)]
+
+    # Ensure there is a core per calculation.
+    assert (len(problemList)%comm.Get_size() == 0), "You need to run this on a number of cores such that " + str(len(problemList)) + " problems can be separated evenly amongst each one."
+
+    # Pick the problems the thread will solve.
+    problemIndices = np.arange(rank, len(problemList), step = comm.Get_size())
+
+    for index in problemIndices:
+        problem = problemList[index]
+        results = problem[2].__call__(problem[1], numIters, numRuns)
+
+        #Append results to a file.
+        with open("compare_timings.txt", "a") as textFile:
+            textFile.write(str(problem[0]))
+            textFile.write("\n")
+            textFile.write(str(results))
+            textFile.write("\n")
+            textFile.close()
+
+        print(problem[0])
+        print(str(results))
+
+    comm.Barrier()
+    if rank == 0:
+        print("All processes ended.")
+
+    return
+
+def ComparePaperMPI(numIters, numRuns):
+    """
+    Compares the algorithms against the literature value of the specific experiment defined in the global parameters.
+    Uses multiple cores thanks to the MPI framework.
+    """
+
+    # Find all the cores being used.
+    comm = MPI.COMM_WORLD
+    
+    # Get the 'name' of each core to refer to them.
+    rank = comm.Get_rank()
+
+    # Create a list of all problems. This is explicitly defined.
+    problemList = [("Bayesian Optimisation, 1D", 1, StatsBayes), ("Bayesian Optimisation, 2D", 2, StatsBayes), ("Bayesian Optimisation, 3D", 3, StatsBayes), ("Bayesian Optimisation, 4D", 4, StatsBayes),
+    ("Bayesian Optimisation, 5D", 5, StatsBayes), ("CMAES, 1D", 1, StatsCMAES), ("CMAES, 2D", 2, StatsCMAES), ("CMAES, 3D", 3, StatsCMAES), ("CMAES, 4D", 4, StatsCMAES),
+    ("CMAES, 5D", 5, StatsCMAES), ("Random Searching, 1D", 1, StatsRandom), ("Random Searching, 2D", 2, StatsRandom), ("Random Searching, 3D", 3, StatsRandom), ("Random Searching, 4D", 4, StatsRandom),
+    ("Random Searching, 5D", 5, StatsRandom), ("Cobyla, 1D", 1, StatsCobyla), ("Cobyla, 2D", 2, StatsCobyla), ("Cobyla, 3D", 3, StatsCobyla), ("Cobyla, 4D", 4, StatsCobyla),
+    ("Cobyla, 5D", 5, StatsCobyla)]#, ("MCMC, 1D", 1, StatsMCMC), ("MCMC, 2D", 2, StatsMCMC), ("MCMC, 3D", 3, StatsMCMC), ("MCMC, 4D", 4, StatsMCMC), ("MCMC, 5D", 5, StatsMCMC)]
+
+    # Ensure there is a core per calculation.
+    assert (len(problemList)%comm.Get_size() == 0), "You need to run this on a number of cores such that " + str(len(problemList)) + " problems can be separated evenly amongst each one."
+
+    # Pick the problems the thread will solve.
+    problemIndices = np.arange(rank, len(problemList), step = comm.Get_size())
+
+    for index in problemIndices:
+        problem = problemList[index]
+        results = problem[2].__call__(problem[1], numIters, numRuns, True)
+
+        # Append results to a file.
+        with open("compare_paper.txt", "a") as textFile:
+            textFile.write(str(problem[0]))
+            textFile.write("\n")
+            textFile.write(str(results))
+            textFile.write("\n")
+            textFile.close()
+
+        print(problem[0])
+        print(str(results))
+
+    comm.Barrier()
+    if rank == 0:
+        print("All processes ended.")
+
+    return
 
 if __name__ == "__main__":
     # Ensure calculations are being carried out correctly.
     #TestFoM()
 
-    #print(StatsBayes(5, 5, 1, True))
-    CompareAlgos(20, 10)
+    # Determine the stats for an optimisation algorithm.
+    #print(StatsCobyla(2, 2000))
+
+    # Test spectrum plotting.
+    # Input parameters used.
+    #inputParams = {'Bfield':144, 'rb85frac':72.17, 'Btheta':np.deg2rad(0), 'Etheta':np.deg2rad(0), 'lcell':5e-3, 'T':245, 'Dline':'D2', 'Elem':'Na'}
+    #ProduceSpectrum(globalDetuning, inputParams, toPlot = True)
+
+    # Compare algorithms using different tests.
+    #CompareAlgos(200, 10)
+    #ComparePaperAlgos(200, 10)
+    ComparePaperMPI(200, 20)
+    CompareMPI(200, 20)

@@ -50,12 +50,12 @@ def FourStepGraph():
 	detuning = np.arange(-10000,10000,10)
 
 	# Define the experimental parameters.
-	x = [230, 83, 126]
+	x = [230, 120, 126]
 	p_dict = {'Bfield':x[0], 'rb85frac':72.17, 'Btheta':x[1], 'lcell':5e-3, 'T':x[2], 'Dline':'D2', 'Elem':'Rb'}
 	
 	# Get the intensity of light perpendicular to the input light (assuming the setup has two crossed polarisers surrounding the filter).
 	# [1,0,0] means the incoming light has an E field aligned along the x-axis only.
-	spectrumOutput = get_spectra(detuning, [0,1,0], p_dict, outputs=['Iy', 'ChiPlus', 'ChiMinus'])
+	spectrumOutput = get_spectra(detuning, [1,0,0], p_dict, outputs=['Iy', 'ChiPlus', 'ChiMinus'])
 
 	Iy = spectrumOutput[0]
 
@@ -193,7 +193,47 @@ def OptSurfaceGraph():
 
 	return
 
+def ProduceSpectrum(detuning, params, toPlot = True):
+        """
+        Produce a simple transmission output using ElecSus.
+        We always assume that the polariser after the filter is perpendiucular to the input
+        angle of the light.
+        """
+
+        # Use the input of the function to determine the polarisation of the input light.
+        E_in = np.array([np.cos(params["Etheta"]), np.sin(params["Etheta"]), 0])
+
+        # Determine the effect of the final polariser on the output field using a Jones matrix.
+        outputAngle = params['Etheta'] + np.pi/2
+        J_out = np.matrix([[np.cos(outputAngle)**2, np.sin(outputAngle)*np.cos(outputAngle)],
+                        [np.sin(outputAngle)*np.cos(outputAngle), np.sin(outputAngle)**2]])
+
+        # Call ElecSus to find the output electric field from the cell.
+        try:
+	        [E_out] = elecsus.calculate(detuning, E_in, params, outputs=['E_out'])
+
+        except:
+            # There was an issue obtaining the field from ElecSus.
+	        return 0
+
+        transmittedE =  np.array(J_out * E_out[:2])
+        transmission =  (transmittedE * transmittedE.conjugate()).sum(axis=0)
+
+        if toPlot:
+            # Plot the result.
+            plt.plot(detuning, transmission)
+            plt.show()
+
+        return transmission
+
 if __name__ == '__main__':
 	print('Running Test Cases...')
-	FourStepGraph()
+	#FourStepGraph()
 	#OptSurfaceGraph()
+
+	# Define the frequency range to be inspected in MHz.
+	globalDetuning = np.arange(-100000, 100000, 10)
+
+	# Define the experimental parameters.
+	p_dict = {'Bfield':230, 'rb85frac':72.17, 'Btheta':np.deg2rad(0), 'Etheta':np.deg2rad(0), 'lcell':5e-3, 'T':126, 'Dline':'D2', 'Elem':'Rb'}
+	ProduceSpectrum(globalDetuning, p_dict, True)

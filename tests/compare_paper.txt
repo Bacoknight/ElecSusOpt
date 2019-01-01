@@ -1,0 +1,22 @@
+Bayesian Optimisation, 1D
+[0, 0.0, nan, nan, nan]
+Bayesian Optimisation, 1D
+[0, 0.0, nan, nan, nan]
+Bayesian Optimisation, 2D
+[0, 0.0, nan, nan, nan]
+Bayesian Optimisation, 3D
+[0, 0.0, nan, nan, nan]
+Bayesian Optimisation, 4D
+[0, 0.0, nan, nan, nan]
+CMAES, 3D
+[0, 0.0, nan, nan, nan]
+Random Searching, 3D
+[0, 0.0, nan, nan, nan]
+CMAES, 4D
+[0, 0.0, nan, nan, nan]
+Bayesian Optimisation, 1D
+[0, 0.0, nan, nan, nan]
+Bayesian Optimisation, 2D
+[0, 0.0, nan, nan, nan]
+Bayesian Optimisation, 3D
+[0, 0.0, nan, nan, nan]
