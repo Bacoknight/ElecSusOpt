@@ -185,7 +185,7 @@ def ComparePaper(maxIters, numRuns):
 
     assert (comm.Get_size() == 6 or comm.Get_size() == 1), "There are not enough/too many processes running for this problem. Please ensure the number of processes is either 1 or 6."
 
-    # The target for each algorithm. This was determined by using the values in the literature, so there is clearly come deviation either due to the detuning or computation.
+    # The target for each algorithm. This was determined by using the values in the literature, so there is clearly some deviation either due to the detuning or computation.
     globalFoM = 1.033
 
     if toMPI:
@@ -257,8 +257,19 @@ def ComparePaper(maxIters, numRuns):
             # Define the problem bounds.
             skoptBounds = [(10, 1300), (40, 230), (0, 90), (0, 90)]
 
-            # Give each algorithm the same seeds so they start from the same place.
-            seedList = [np.random.randint(1, 1e6) for i in range(numRuns)]
+            if rank == 1:
+                # Give each algorithm the same seeds so they start from the same place.
+                seedList = np.random.randint(1e6, size = numRuns)
+                comm.Send([seedList, MPI.INT], dest = 2)
+                comm.Send([seedList, MPI.INT], dest = 3)
+                comm.Send([seedList, MPI.INT], dest = 4)
+                comm.Send([seedList, MPI.INT], dest = 5)
+            else:   
+                # Obtain the seed list. 
+                seedList = np.empty(numRuns, dtype = "i")
+                comm.Recv([seedList, MPI.INT], source = 1)
+                
+            print(seedList, rank)
 
             strategyList = [("GP", "Bayesian optimisation"), ("RF", "Random forest"), ("ET", "Extra trees"), ("GBRT", "Gradient boosted random trees"), ("DUMMY", "Random sampling")] 
 
@@ -374,7 +385,9 @@ def ComparePaper(maxIters, numRuns):
         skoptBounds = [(10, 1300), (40, 230), (0, 90), (0, 90)]
 
         # Give each algorithm the same seeds so they start from the same place.
-        seedList = [np.random.randint(1, 1e6) for i in range(numRuns)]
+        seedList = np.random.randint(1e6, size = numRuns)
+        print(seedList)
+        
 
         strategyList = [("GP", "Bayesian optimisation"), ("RF", "Random forest"), ("ET", "Extra trees"), ("GBRT", "Gradient boosted random trees"), ("DUMMY", "Random sampling")] 
 
@@ -497,8 +510,20 @@ def Compare5D(maxIters, numRuns):
             # Define the problem bounds.
             skoptBounds = [(10, 1300), (40, 230), (0, 90), (0, 90), (0, 90)]
 
-            # Give each algorithm the same seeds so they start from the same place.
-            seedList = [np.random.randint(1, 1e6) for i in range(numRuns)]
+            if rank == 1:
+                # Give each algorithm the same seeds so they start from the same place.
+                seedList = np.random.randint(1e6, size = numRuns)
+                comm.Send([seedList, MPI.INT], dest = 2)
+                comm.Send([seedList, MPI.INT], dest = 3)
+                comm.Send([seedList, MPI.INT], dest = 4)
+                comm.Send([seedList, MPI.INT], dest = 5)
+            else:   
+                # Obtain the seed list. 
+                seedList = np.empty(numRuns, dtype = "i")
+                comm.Recv([seedList, MPI.INT], source = 1)
+
+            print("Seed list and rank:")
+            print(seedList, rank)
 
             strategyList = [("GP", "Bayesian optimisation"), ("RF", "Random forest"), ("ET", "Extra trees"), ("GBRT", "Gradient boosted random trees"), ("DUMMY", "Random sampling")] 
 
@@ -595,7 +620,8 @@ def Compare5D(maxIters, numRuns):
         skoptBounds = [(10, 1300), (40, 230), (0, 90), (0, 90,), (0, 90)]
 
         # Give each algorithm the same seeds so they start from the same place.
-        seedList = [np.random.randint(1, 1e6) for i in range(numRuns)]
+        seedList = np.random.randint(1e6, size = numRuns)
+        print(seedList)
 
         strategyList = [("GP", "Bayesian optimisation"), ("RF", "Random forest"), ("ET", "Extra trees"), ("GBRT", "Gradient boosted random trees"), ("DUMMY", "Random sampling")] 
 
@@ -646,7 +672,7 @@ def Compare5D(maxIters, numRuns):
 
 if __name__ == "__main__":
     # Run the first comparison test.
-    ComparePaper(1000, 5)
+    ComparePaper(10, 1)
 
     # Run the second comparison test.
-    Compare5D(1000, 5)
+    Compare5D(10, 1)
