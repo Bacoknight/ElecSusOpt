@@ -41,4 +41,4 @@ def ConfirmTwoFilters(databaseConnection):
     return
 
 if __name__ == "__main__":
-    ConfirmTwoFilters(choco.SQLiteConnection("sqlite:///two_filters_db.db"))
+    ConfirmTwoFilters(choco.SQLiteConnection("sqlite:///1.db"))

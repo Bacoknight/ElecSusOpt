@@ -14,6 +14,7 @@ from mpi4py import MPI
 import pandas as pd
 import itertools
 import seaborn as sb
+import skopt
 
 # Here we define some global variables so that it is easier to change it for all functions.
 # Detuning used for all tests.
@@ -255,6 +256,28 @@ def TwoFilters(bField1, temperature1, bTheta1, eTheta1, bPhi1, abundance1, polar
     else:
         return TwoFiltersNonPolarised(globalDetuning, cell1Params, cell2Params)
 
+def TwoFiltersFMFN(params):
+    """
+    The objective function to be optimised by the FMFN Bayesian Optimisation algorithm.
+    """
+
+    cell1Params = p1
+    cell1Params["Bfield"] = params[0]
+    cell1Params["T"] = params[1]
+    cell1Params["Btheta"] = np.deg2rad(0)
+    cell1Params["Etheta"] = np.deg2rad(6)
+    cell1Params["Bphi"] = np.deg2rad(0)
+    cell1Params["rb85frac"] = 72.17
+
+    cell2Params = p2
+    cell2Params["Bfield"] = params[2]
+    cell2Params["T"] = params[3]
+    cell2Params["Btheta"] = np.deg2rad(90)
+    cell2Params["Bphi"] = np.deg2rad(0)
+    cell2Params["rb85frac"] = 72.17
+
+    return -1 * (TwoFiltersNonPolarised(globalDetuning, cell1Params, cell2Params))
+
 def FirstFilter(bField1, temperature1, bTheta1, eTheta1, bPhi1, abundance1):
     """
     This is required for determining the individual figure of merit for each filter.
@@ -310,9 +333,13 @@ def OptimiseTwoFilters(numItersPerCore, toClear = False):
     rank = comm.Get_rank()
 
     # Define the bounds of each variable.
-    variableBounds = {"bField1": choco.uniform(0, 2000), "temperature1": choco.uniform(20, 400), "bTheta1": choco.uniform(0, 180), "eTheta1": choco.uniform(0, 180), "bPhi1": choco.uniform(0, 180),
-    "abundance1": choco.choice(isotopeRbList), "polariserPresent": choco.choice([True, False]), "polariser1Angle": choco.uniform(0, 180), "bField2": choco.uniform(0, 2000),
-    "temperature2": choco.uniform(20, 400), "bTheta2": choco.uniform(0, 180), "bPhi2": choco.uniform(0, 180), "abundance2": choco.choice(isotopeRbList), "polariser2Angle": choco.uniform(0, 180)}
+    # variableBounds = {"bField1": choco.uniform(0, 2000), "temperature1": choco.uniform(20, 400), "bTheta1": choco.uniform(0, 180), "eTheta1": choco.uniform(0, 180), "bPhi1": choco.uniform(0, 180),
+    # "abundance1": choco.choice(isotopeRbList), "polariserPresent": choco.choice([True, False]), "polariser1Angle": choco.uniform(0, 180), "bField2": choco.uniform(0, 2000),
+    # "temperature2": choco.uniform(20, 400), "bTheta2": choco.uniform(0, 180), "bPhi2": choco.uniform(0, 180), "abundance2": choco.choice(isotopeRbList), "polariser2Angle": choco.uniform(0, 180)}
+
+    variableBounds = {"bField1": choco.uniform(0, 500), "temperature1": choco.uniform(20, 150), "bTheta1": choco.choice([0]), "eTheta1": choco.choice([6]), "bPhi1": choco.choice([0]),
+    "abundance1": choco.choice([72.17]), "polariserPresent": choco.choice([False]), "polariser1Angle": choco.uniform(0, 90), "bField2": choco.uniform(0, 500),
+    "temperature2": choco.uniform(20, 150), "bTheta2": choco.choice([90]), "bPhi2": choco.choice([0]), "abundance2": choco.choice([72.17]), "polariser2Angle": choco.uniform(0, 90)}
 
     # Set up the connection and clear previous entries.
     connection = choco.SQLiteConnection("sqlite:///two_filters_db.db")
@@ -348,6 +375,18 @@ def OptimiseTwoFilters(numItersPerCore, toClear = False):
         print(results)
         print(results.to_dict('records')[0])
 
+    return
+
+def OptimiseTwoFilterFMFN(numItersPerCore):
+
+    paramBounds = [(0, 1500), (20, 200), (0, 1500), (20, 200)]
+
+    result = skopt.gp_minimize(TwoFiltersFMFN, paramBounds, verbose = True, n_calls = numItersPerCore, n_random_starts = int(np.ceil(numItersPerCore/10)))
+
+    location, expectedMin = skopt.expected_minimum(result)
+
+    print(expectedMin, location)
+    
     return
 
 def CombinedFoMColourMap(numItersPerCore):
@@ -464,14 +503,15 @@ def ParamSenstivity():
     """
 
     # Define the optimal parameters for the two filter setup.
-    optimalParams = {"bField1": 230, "temperature1": 126, "bTheta1": 83, "eTheta1": 6, "bPhi1": 0, "abundance1": 72.17, "polariserPresent": True, "polariser1Angle": 70,
-     "bField2": 230, "temperature2": 126, "bTheta2": 83, "bPhi2": 0, "abundance2": 72.17, "polariser2Angle": 0}
+    optimalParams = {'abundance1': 72.17, 'abundance2': 72.17, 'bField1': 270, 'bField2': 240, 'polariser2Angle': 105.1686751032191,
+    'eTheta1': 6, 'polariser1Angle': 110.94181803271967, 'bPhi1': 0, 'bPhi2': 0, 'temperature2': 79.0,
+    'polariserPresent': False, 'temperature1': 86.7, 'bTheta1': 0, 'bTheta2': 90}
 
     # Evaluate the function.
     optimalFoM = TwoFilters(**optimalParams)
     print("Optimal figure of merit: " + str(optimalFoM))
 
-    # Each perturbation we will apply. NOTE: This currently assume a symmetric peak, add negative values to test that. TODO: Plot graph?
+    # Each perturbation we will apply. NOTE: This currently assumes a symmetric peak, add negative values to test that. TODO: Plot graph?
     perturbations = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 2, 5, 10, 20]
 
     for key, variable in optimalParams.items():
@@ -503,13 +543,14 @@ if __name__ == "__main__":
     #print(TwoFilters(**paperParams))
 
     # Run optimisation.
-    OptimiseTwoFilters(500, toClear = False)
+    #OptimiseTwoFilters(5000, toClear = False)
+    #OptimiseTwoFilterFMFN(500)
 
     # Create a colourmap showing total FoM sensitivity to individual FoMs.
     #CombinedFoMColourMap(300)
 
     # Determine the sensitivity of each variable.
-    #ParamSenstivity()
+    ParamSenstivity()
 
     # Test a given set of parameters.
     #print(TwoFilters(**twoFiltersParams))

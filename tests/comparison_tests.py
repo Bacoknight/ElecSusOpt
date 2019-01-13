@@ -50,7 +50,6 @@ def ProduceSpectrum(detuning, params, toPlot = False):
         # Call ElecSus to find the output electric field from the cell.
         try:
 	        [E_out] = elecsus.calculate(detuning, E_in, params, outputs=['E_out'])
-
         except:
             # There was an issue obtaining the field from ElecSus.
 	        return np.zeros(len(detuning))
@@ -218,7 +217,7 @@ def StatsBayes(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False)
                 except:
                     print("Error suggesting a new point. Here are the last set of parameters sampled, and it's returned value:")
                     print(str(nextParams))
-                    print(str(fEval))
+                    print("Iteration number: " + str(iteration))
                     continue
 
                 # Check what FoM this gives. Go negative as this is a minimisation routine.
@@ -281,7 +280,7 @@ def StatsBayes(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False)
                 except:
                     print("Error suggesting a new point. Here are the last set of parameters sampled, and it's returned value:")
                     print(str(nextParams))
-                    print(str(fEval))
+                    print("Iteration number: " + str(iteration))
                     continue
 
                 # Check what FoM this gives. Go negative as this is a minimisation routine.
@@ -353,7 +352,7 @@ def StatsCMAES(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False)
                 except:
                     print("Error suggesting a new point. Here are the last set of parameters sampled, and it's returned value:")
                     print(str(nextParams))
-                    print(str(fEval))
+                    print("Iteration number: " + str(iteration))
                     continue
 
                 # Check what FoM this gives. Go negative as this is a minimisation routine.
@@ -373,8 +372,6 @@ def StatsCMAES(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False)
                 # Tell the optimiser about the result.
                 solver.update(token, fEval)
 
-
-        
         # Compute required values. This could probably be sped up by using created variables but I chose not to do so.
         avgRuntime = np.average(timeList)
         avgIters = np.average(iterationList)
@@ -418,7 +415,7 @@ def StatsCMAES(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False)
                 except:
                     print("Error suggesting a new point. Here are the last set of parameters sampled, and it's returned value:")
                     print(str(nextParams))
-                    print(str(fEval))
+                    print("Iteration number: " + str(iteration))
                     continue
 
                 # Check what FoM this gives.
@@ -490,7 +487,7 @@ def StatsRandom(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False
                 except:
                     print("Error suggesting a new point. Here are the last set of parameters sampled, and it's returned value:")
                     print(str(nextParams))
-                    print(str(fEval))
+                    print("Iteration number: " + str(iteration))
                     continue
 
                 # Check what FoM this gives. Go negative as this is a minimisation routine.
@@ -553,7 +550,7 @@ def StatsRandom(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False
                 except:
                     print("Error suggesting a new point. Here are the last set of parameters sampled, and it's returned value:")
                     print(str(nextParams))
-                    print(str(fEval))
+                    print("Iteration number: " + str(iteration))
                     continue
 
                 # Check what FoM this gives. Go negative as this is a minimisation routine.
@@ -783,11 +780,8 @@ def StatsMCMC(dimension = 1, numIters = 100, numRuns = 1, paperCompare = False):
         avgRuntime = np.average(compareTimeList)
         avgIters = np.average(compareIterList)
         try:
-
             fastestTime = np.min(compareTimeList)
-
         except ValueError:
-
             # List is empty.
             fastestTime = float('NaN')
 
@@ -902,6 +896,7 @@ def CompareMPI(numIters, numRuns):
         print(str(results))
 
     comm.Barrier()
+
     if rank == 0:
         print("All processes ended.")
 
@@ -948,6 +943,7 @@ def ComparePaperMPI(numIters, numRuns):
         print(str(results))
 
     comm.Barrier()
+
     if rank == 0:
         print("All processes ended.")
 
@@ -968,5 +964,5 @@ if __name__ == "__main__":
     # Compare algorithms using different tests.
     #CompareAlgos(200, 10)
     #ComparePaperAlgos(200, 10)
-    ComparePaperMPI(200, 20)
-    CompareMPI(200, 20)
+    ComparePaperMPI(300, 7)
+    #CompareMPI(200, 1)

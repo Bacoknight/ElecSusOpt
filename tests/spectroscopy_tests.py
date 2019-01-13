@@ -211,7 +211,6 @@ def ProduceSpectrum(detuning, params, toPlot = True):
         # Call ElecSus to find the output electric field from the cell.
         try:
 	        [E_out] = elecsus.calculate(detuning, E_in, params, outputs=['E_out'])
-
         except:
             # There was an issue obtaining the field from ElecSus.
 	        return 0
