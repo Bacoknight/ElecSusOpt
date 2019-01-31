@@ -32,6 +32,11 @@ import sys
 from elecsus.elecsus_methods import calculate as get_spectra
 from elecsus.libs.spectra import calc_chi as get_chi
 
+import seaborn as sns
+sns.set_context("notebook")
+sns.set_style("ticks")
+sns.despine()
+
 # Global constants
 centreFreqR87 = (380.6685) * 1e6 # MHz. For rubidium only!
 speedLight = 3e8
@@ -50,8 +55,7 @@ def FourStepGraph():
 	detuning = np.arange(-10000,10000,10)
 
 	# Define the experimental parameters.
-	x = [230, 120, 126]
-	p_dict = {'Bfield':x[0], 'rb85frac':72.17, 'Btheta':x[1], 'lcell':5e-3, 'T':x[2], 'Dline':'D2', 'Elem':'Rb'}
+	p_dict = {'Bfield':144, 'rb85frac':72.17, 'Btheta':0, 'lcell':5e-3, 'T':245, 'Dline':'D2', 'Elem':'Na', 'Etheta': 0}
 	
 	# Get the intensity of light perpendicular to the input light (assuming the setup has two crossed polarisers surrounding the filter).
 	# [1,0,0] means the incoming light has an E field aligned along the x-axis only.
@@ -93,14 +97,15 @@ def FourStepGraph():
 	plt.setp(ax2.get_xticklabels(), visible=False)
 	plt.setp(ax3.get_yticklabels(), visible=False)
 	plt.setp(ax4.get_xticklabels(), visible=False)
+	ax3.yaxis.set_ticks_position("none")
 		
 	ax1.plot(detuning/1e3, Iy, '-', color='navy', lw=2.5)
 	ax2.plot(detuning/1e3, absorptionValsPlus, 'r--', color='c', lw=2, label=r'$\sigma^{+}$')
 	ax2.plot(detuning/1e3, phaseShiftValsPlus, color='c', lw=2)
 	ax4.plot(detuning/1e3, deltaN, color='navy')
 	ax5.plot(detuning/1e3, phaseArray, color='navy')
-	ax5.axhline(2, color='red', label=r'$\phi = \pi$')
-	ax5.axhline(1.0005, color='green', label=r'$\phi = \frac{\pi}{2}$')
+	#ax5.axhline(2, color='red', label=r'$\phi = \pi$')
+	#ax5.axhline(1.0005, color='green', label=r'$\phi = \frac{\pi}{2}$')
 
 	#Note, the following code will not work on Hamilton as it requires a later version of SciPy.
 	markerline, stemlines, baseline = ax3.stem(peakFreqPlus/1e3, peakAlphaPlus, '-.', label=r'$\sigma^{+}$')
@@ -122,17 +127,19 @@ def FourStepGraph():
 	ax3.set_xlabel('Detuning (GHz)')
 	ax1.set_ylabel('Transmission')
 	ax2.set_ylabel(r'$n_{Im}, n_{Re}$')
-	ax5.set_ylabel(r'Phase shift ($1000 \pi$)')
+	ax5.set_ylabel(r'Polarisation rotation ($1000 \pi$)')
 	ax3.set_ylabel('Relative Transition Strength')
 	ax4.set_ylabel(r'$n_{+, Re} - n_{-, Re}$')
 
-	ax2.legend(loc="upper center")
-	ax3.legend(loc="upper center")
-	ax5.legend(loc="lower center")
+	ax2.legend(loc="best")
+	ax3.legend(loc="best")
+	#ax5.legend(loc="best")
 	
 	ax2.set_xlim(-10,10)
 	ax3.set_ylim(0)
 	ax1.set_ylim(0)
+
+	plt.tight_layout()
 
 	ENBW = integrate(Iy, x=detuning/1e3)/np.amax(Iy)
 	FOM = np.amax(Iy)/ENBW
@@ -194,45 +201,45 @@ def OptSurfaceGraph():
 	return
 
 def ProduceSpectrum(detuning, params, toPlot = True):
-        """
-        Produce a simple transmission output using ElecSus.
-        We always assume that the polariser after the filter is perpendiucular to the input
-        angle of the light.
-        """
+	"""
+	Produce a simple transmission output using ElecSus.
+	We always assume that the polariser after the filter is perpendiucular to the input
+	angle of the light.
+	"""
 
-        # Use the input of the function to determine the polarisation of the input light.
-        E_in = np.array([np.cos(params["Etheta"]), np.sin(params["Etheta"]), 0])
+	# Use the input of the function to determine the polarisation of the input light.
+	E_in = np.array([np.cos(params["Etheta"]), np.sin(params["Etheta"]), 0])
 
-        # Determine the effect of the final polariser on the output field using a Jones matrix.
-        outputAngle = params['Etheta'] + np.pi/2
-        J_out = np.matrix([[np.cos(outputAngle)**2, np.sin(outputAngle)*np.cos(outputAngle)],
-                        [np.sin(outputAngle)*np.cos(outputAngle), np.sin(outputAngle)**2]])
+	# Determine the effect of the final polariser on the output field using a Jones matrix.
+	outputAngle = params['Etheta'] + np.pi/2
+	J_out = np.matrix([[np.cos(outputAngle)**2, np.sin(outputAngle)*np.cos(outputAngle)],
+					[np.sin(outputAngle)*np.cos(outputAngle), np.sin(outputAngle)**2]])
 
-        # Call ElecSus to find the output electric field from the cell.
-        try:
-	        [E_out] = elecsus.calculate(detuning, E_in, params, outputs=['E_out'])
-        except:
-            # There was an issue obtaining the field from ElecSus.
-	        return 0
+	# Call ElecSus to find the output electric field from the cell.
+	try:
+		[E_out] = elecsus.calculate(detuning, E_in, params, outputs=['E_out'])
+	except:
+		# There was an issue obtaining the field from ElecSus.
+		return 0
 
-        transmittedE =  np.array(J_out * E_out[:2])
-        transmission =  (transmittedE * transmittedE.conjugate()).sum(axis=0)
+	transmittedE =  np.array(J_out * E_out[:2])
+	transmission =  (transmittedE * transmittedE.conjugate()).sum(axis=0)
 
-        if toPlot:
-            # Plot the result.
-            plt.plot(detuning, transmission)
-            plt.show()
+	if toPlot:
+		# Plot the result.
+		plt.plot(detuning, transmission)
+		plt.show()
 
-        return transmission
+	return transmission
 
 if __name__ == '__main__':
 	print('Running Test Cases...')
-	#FourStepGraph()
+	FourStepGraph()
 	#OptSurfaceGraph()
 
 	# Define the frequency range to be inspected in MHz.
-	globalDetuning = np.arange(-100000, 100000, 10)
+	#globalDetuning = np.linspace(-25000, 25000, 1000)
 
 	# Define the experimental parameters.
-	p_dict = {'Bfield':230, 'rb85frac':72.17, 'Btheta':np.deg2rad(0), 'Etheta':np.deg2rad(0), 'lcell':5e-3, 'T':126, 'Dline':'D2', 'Elem':'Rb'}
-	ProduceSpectrum(globalDetuning, p_dict, True)
+	#p_dict = {'Bfield':144, 'rb85frac':72.17, 'Btheta':0, 'lcell':5e-3, 'T':245, 'Dline':'D2', 'Elem':'Na', 'Etheta': 0}
+	#print(ProduceSpectrum(globalDetuning, p_dict, True))

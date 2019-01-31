@@ -8,8 +8,10 @@ import numpy as np
 import skopt
 from scipy.integrate import simps as integrate
 from matplotlib import pyplot as plt
-from skopt.plots import plot_convergence
+from skopt.plots import plot_convergence, plot_objective
+from skopt.acquisition import gaussian_ei, gaussian_lcb, gaussian_pi
 from functools import partial
+from tqdm import tqdm
 
 # Global parameters.
 baseParams = {"Elem": "Rb", "lcell": 5e-3, "Dline": "D2", "rb85frac": 72.17}
@@ -374,15 +376,98 @@ def ConvergencePlot(numIters):
 
     return
 
+def AcquisitionPlot(numIters):
+    """
+    A plot showing the acquisition function and what it predicts as the next best point.
+    """
+
+    # Set up the frame.
+    fig = plt.figure()
+    objPlot = fig.add_subplot(2, 1, 1)
+    objPlot.set_xlim(10, 1300)
+    acqPlot = fig.add_subplot(2, 1, 2)
+    acqPlot.set_xlim(10, 1300)
+
+    # Generate a model for each acquisition function.
+    # Define the problem bounds.
+    problemBounds = [(10, 1300)]
+
+    # Give each the same random state.
+    ranState = np.random.randint(1e6)
+    print("Random seed:")
+    print(ranState)
+
+    def run(minimizer):
+        return minimizer(bStrengthFitness, problemBounds, n_calls = numIters, random_state = ranState, verbose = True) 
+
+    # Generate the objective function.
+    bRange = np.linspace(10 ,1300, num = 1000)
+    funcVals = []
+    print("Plotting objective function:")
+    for b in tqdm(bRange):
+        funcVals.append(bStrengthFitness([b]))
+
+    objPlot.plot(bRange, np.abs(funcVals))
+
+    # Reshape the input due to it having a single variable (feature).
+    bRange = bRange.reshape(-1, 1)
+
+    # Plot the LCB acquisition function.
+    lcbRes = run(partial(skopt.forest_minimize, base_estimator = "ET", acq_func = "LCB"))
+    lcbModel = lcbRes.models[-1]
+    lcbFunc = gaussian_lcb(bRange, lcbModel)
+    acqPlot.plot(bRange, np.divide(lcbFunc, lcbFunc.min()), label = "LCB")
+
+    # Plot the EI acquisition function.
+    eiRes = run(partial(skopt.forest_minimize, base_estimator = "ET", acq_func = "EI"))
+    eiModel = eiRes.models[-1]
+    eiFunc = gaussian_ei(bRange, eiModel)
+    acqPlot.plot(bRange, np.divide(eiFunc, eiFunc.max()), label = "EI")
+
+    # Plot the PI acquisition function.
+    piRes = run(partial(skopt.forest_minimize, base_estimator = "ET", acq_func = "PI"))
+    piModel = piRes.models[-1]
+    piFunc = gaussian_pi(bRange, piModel)
+    acqPlot.plot(bRange, np.divide(piFunc, piFunc.max()), label = "PI")
+
+    acqPlot.legend()
+    plt.show()
+
+    return
+
+def VisualiseResults(numIters):
+    """
+    Uses the built in plot_objective function in skopt to plot the optimisation process for a single filter.
+    """
+
+    # Define the problem bounds.
+    problemBounds = [(10., 1300.), (40., 230.), (0., 90.), (0., 90.)]
+
+    # Run the optimisation.
+    result = skopt.forest_minimize(ElecsusFitnessSingle, problemBounds, verbose = True, n_calls = numIters, n_random_starts = int(np.ceil(numIters/10)), base_estimator = "ET")
+
+    # Plot the result.
+    plot_objective(result)
+
+    plt.show()
+
+    return
+
 if __name__ == "__main__":
     # Test the fitness function.
-    TestFitness()
+    #TestFitness()
 
     # Run the optimisation algorithms in 1D.
     #Optimise1D(50)
 
     # Run the optimisation of the 'full' single filter problem.
-    FullOptimisation(1000)
+    #FullOptimisation(1000)
 
     # Create a convergence plot of the strategies available on skopt.
     #ConvergencePlot(50)
+
+    # Show what the acquisition functions see.
+    AcquisitionPlot(50)
+
+    # Visualise the results of a single optimisation.
+    #VisualiseResults(1000)

@@ -13,40 +13,42 @@ from mpi4py import MPI
 
 # Here we define some global variables so that it is easier to change it for all functions.
 # Detuning used for all tests.
-globalDetuning = np.arange(-100000, 100000, 10) # MHz
+globalDetuning = np.linspace(-25000, 25000, 1000) # MHz
 
 def ProduceSpectrum(detuning, params, toPlot = False):
-        """
-        Produce a simple transmission output using ElecSus.
-        We always assume that the polariser after the filter is perpendiucular to the input
-        angle of the light.
-        """
+    """
+    Produce a simple transmission output using ElecSus.
+    We always assume that the polariser after the filter is perpendiucular to the input
+    angle of the light.
+    """
 
-        # Use the input of the function to determine the polarisation of the input light.
-        E_in = np.array([np.cos(params["Etheta"]), np.sin(params["Etheta"]), 0])
+    # Use the input of the function to determine the polarisation of the input light.
+    E_in = np.array([np.cos(params["Etheta"]), np.sin(params["Etheta"]), 0])
 
-        # Determine the effect of the final polariser on the output field using a Jones matrix.
-        outputAngle = params['Etheta'] + np.pi/2
-        J_out = np.matrix([[np.cos(outputAngle)**2, np.sin(outputAngle)*np.cos(outputAngle)],
-                        [np.sin(outputAngle)*np.cos(outputAngle), np.sin(outputAngle)**2]])
+    # Determine the effect of the final polariser on the output field using a Jones matrix.
+    outputAngle = params['Etheta'] + np.pi/2
+    J_out = np.matrix([[np.cos(outputAngle)**2, np.sin(outputAngle)*np.cos(outputAngle)],
+                    [np.sin(outputAngle)*np.cos(outputAngle), np.sin(outputAngle)**2]])
 
-        # Call ElecSus to find the output electric field from the cell.
-        try:
-	        [E_out] = elecsus.calculate(detuning, E_in, params, outputs=['E_out'])
+    # Call ElecSus to find the output electric field from the cell.
+    try:
+        [E_out] = elecsus.calculate(detuning, E_in, params, outputs=['E_out'])
 
-        except:
-            # There was an issue obtaining the field from ElecSus.
-	        return 0
+    except:
+        # There was an issue obtaining the field from ElecSus.
+        return 0
 
-        transmittedE =  np.array(J_out * E_out[:2])
-        transmission =  (transmittedE * transmittedE.conjugate()).sum(axis=0)
+    transmittedE =  np.array(J_out * E_out[:2])
+    transmission =  (transmittedE * transmittedE.conjugate()).sum(axis=0)
 
-        if toPlot:
-                # Plot the result.
-                plt.plot(detuning, transmission)
-                plt.show()
+    if toPlot:
+            # Plot the result.
+            plt.plot(detuning, transmission)
+            plt.ylim(bottom = 0)
+            plt.xlim(min(detuning), max(detuning))
+            plt.show()
 
-        return transmission
+    return transmission
 
 def CalculateFoM(detuning, params):
 
@@ -156,5 +158,73 @@ def PlotFoMvsBGraph():
 
     return
 
+def PlotFoMvsBPhi():
+
+    # Define the optimal parameters.
+    d2Params = {'Bfield':230, 'rb85frac':72.17, 'Btheta':np.deg2rad(83), 'Etheta':np.deg2rad(6), 'lcell':5e-3, 'T':126, 'Dline':'D2', 'Elem':'Rb'}
+
+    bPhiRange = np.linspace(0, 360, num = 5000)
+
+    fomList = []
+
+    for bPhi in bPhiRange:
+        elecsusParams = d2Params.copy()
+        elecsusParams["Bphi"] = np.deg2rad(bPhi)
+
+        # First generate the output transmission as before.
+        inputE = np.array([np.cos(elecsusParams["Etheta"]), np.sin(elecsusParams["Etheta"]), 0])
+
+        # Call ElecSus to obtain the output electric field.
+        try:
+            # There may at times be issues with ElecSus, such as when NaN is entered as a variable.
+            [outputE] = elecsus.calculate(globalDetuning, inputE, elecsusParams, outputs = ["E_out"])
+        except:
+            print("There was an issue in ElecSus, so this iteration will return a figure of merit of 0. Here are the input parameters:")
+            print("Input parameters: " + str(elecsusParams))
+            print("Input field: " + str(inputE))
+            return 0.0
+        
+        # Use a Jones matrix to determine the electric field after the action of the second polariser. As this is a single filter, the two polarisers are crossed.
+        polariserAngle = elecsusParams["Etheta"] + np.pi/2
+
+        # Define the Jones matrix. Though only explicitly defined for the x-y plane, we add the third dimension so that we can use all 3 dimensions of the output field.
+        jonesMatrix = np.matrix([[np.cos(polariserAngle)**2, np.sin(polariserAngle)*np.cos(polariserAngle), 0],
+                                    [np.sin(polariserAngle)*np.cos(polariserAngle), np.sin(polariserAngle)**2, 0],
+                                    [0, 0, 1]])
+
+        # Get the output from the filter and the polarisers.
+        singleFilterOutputE = np.array(jonesMatrix * outputE)
+
+        # Get the transmission.
+        singleFilterTransmission = (singleFilterOutputE * singleFilterOutputE.conjugate()).sum(axis=0)
+
+        ENBW = ((integrate(singleFilterTransmission, globalDetuning)/singleFilterTransmission.max().real)/1e3).real
+
+        figureOfMerit = (singleFilterTransmission.max()/ENBW).real
+
+        fomList.append(figureOfMerit)
+
+    fig = plt.figure(r"Figure of Merit vs $\phi_{B}$")
+    fig.set_size_inches(19.20, 10.80)
+    plt.plot(bPhiRange, fomList)
+    plt.axhline(1.033, linestyle = "--", color = "m")
+    plt.xlabel(r"$\phi_{B}$ [Degrees]")
+    plt.ylabel(r"Figure of Merit [GHz$^{-1}$]")
+    plt.xlim(0, 360)
+    plt.tight_layout()
+    #plt.ylim(bottom = 0)
+
+    plt.savefig("fom_vs_bphi.pdf")
+
+    print("Plot finished!")
+
+    plt.show()
+
+    return
+
 if __name__ == "__main__":
-    PlotFoMvsBGraph()
+    #PlotFoMvsBGraph()
+    #PlotFoMvsBPhi()
+
+    p_dict = {'Bfield':230, 'rb85frac':72.17, 'Btheta':np.deg2rad(83), 'Etheta':np.deg2rad(6), 'lcell':5e-3, 'T':200, 'Dline':'D2', 'Elem':'Rb'}
+    ProduceSpectrum(globalDetuning, p_dict, True)

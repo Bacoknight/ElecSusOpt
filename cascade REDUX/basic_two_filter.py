@@ -216,6 +216,78 @@ def OptimiseSimpleTwoFilter(numIters):
 
     return
 
+def PlotTransmission(inputParams):
+    """
+    Plot the transmission of the double filter.
+    """
+
+    filter1Params = lit1Params.copy()
+    filter2Params = lit2Params.copy()
+
+    filter1Params["Bfield"] = inputParams[0]
+    filter1Params["T"] = inputParams[1]
+    filter1Params["Etheta"] = np.deg2rad(inputParams[2])
+    filter1Params["Btheta"] = np.deg2rad(inputParams[3])
+    filter1Params["Bphi"] = np.deg2rad(inputParams[4])
+    filter2Params["Bfield"] = inputParams[5]
+    filter2Params["T"] = inputParams[6]
+    filter2Params["Btheta"] = np.deg2rad(inputParams[7])
+    filter2Params["Bphi"] = np.deg2rad(inputParams[8])
+
+    # First generate the output transmission for the first filter.
+    inputE = np.array([np.cos(filter1Params["Etheta"]), np.sin(filter1Params["Etheta"]), 0])
+
+    # Call ElecSus to obtain the output electric field from the first filter.
+    try:
+        # There may at times be issues with ElecSus, such as when NaN is entered as a variable.
+        [outputE1] = elecsus.calculate(globalDetuning, inputE, filter1Params, outputs = ["E_out"])
+    except:
+        print("There was an issue in ElecSus for the first filter, so this iteration will return a figure of merit of 0. Here are the input parameters:")
+        print("Input parameters: " + str(filter1Params))
+        print("Input field: " + str(inputE))
+        return 0.0
+
+    # Call ElecSus to obtain the output field from the second filter.
+    try:
+        # There may at times be issues with ElecSus, such as when NaN is entered as a variable.
+        [outputE2] = elecsus.calculate(globalDetuning, outputE1, filter2Params, outputs = ["E_out"])
+    except:
+        print("There was an issue in ElecSus for the second filter, so this iteration will return a figure of merit of 0. Here are the input parameters:")
+        print("Input parameters: " + str(filter2Params))
+        print("Input field: " + str(outputE1))
+        return 0.0
+
+    # Use a Jones matrix to determine the electric field after the action of the second polariser. As this is a single filter, the two polarisers are crossed.
+    polariserAngle = filter1Params["Etheta"] + np.pi/2
+
+    # Define the Jones matrix. Though only explicitly defined for the x-y plane, we add the third dimension so that we can use all 3 dimensions of the output field.
+    jonesMatrix = np.matrix([[np.cos(polariserAngle)**2, np.sin(polariserAngle)*np.cos(polariserAngle), 0],
+								[np.sin(polariserAngle)*np.cos(polariserAngle), np.sin(polariserAngle)**2, 0],
+                                [0, 0, 1]])
+
+    # Get the output from the filter and the polarisers.
+    outputE = np.array(jonesMatrix * outputE2)
+
+    # Get the transmission.
+    filterTransmission = (outputE * outputE.conjugate()).sum(axis=0).real
+
+    ENBW = ((integrate(filterTransmission, globalDetuning)/filterTransmission.max().real)/1e3).real
+
+    figureOfMerit = (filterTransmission.max()/ENBW).real
+
+    print("Computation complete! Here are the relevant values:")
+    print("ENBW: " + str(ENBW))
+    print("Figure of Merit: " + str(figureOfMerit))
+
+    plt.plot(globalDetuning/1e3, filterTransmission)
+    plt.xlim(globalDetuning[0]/1e3, globalDetuning[-1]/1e3)
+    plt.ylim(bottom = 0)
+    plt.xlabel("Detuning (GHz)")
+    plt.ylabel("Transmission")
+    plt.show()
+    
+    return
+
 if __name__ == "__main__":
 
     # # Test the dual filters by splitting in half.
@@ -228,7 +300,11 @@ if __name__ == "__main__":
 
     # # Test the fitness function.
     # print("Looking for about 1.2...")
-    # print(abs(TwoFilterFitness([270, 86.7, 240, 79])))
+    #print(abs(TwoFilterFitness([270, 86.7, 240, 79])))
 
     # Run the optimisation.
-    OptimiseSimpleTwoFilter(1000)
+    #OptimiseSimpleTwoFilter(1000)
+
+    # Plot the transmission of a double filter.
+    inputParams = [314, 109, 50, 86, 59, 199, 77, 77, 2]
+    PlotTransmission(inputParams)

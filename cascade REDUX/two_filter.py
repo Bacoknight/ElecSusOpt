@@ -7,6 +7,7 @@ import skopt
 import numpy as np
 from elecsus import elecsus_methods as elecsus
 from scipy.integrate import simps as integrate
+from sklearn.tree import export_graphviz
 
 # Define some global parameters.
 globalDetuning = np.linspace(-25000, 25000, 1000)
@@ -110,13 +111,58 @@ def Optimise(numIters):
     Optimise the fitness function.
     """
 
-    problemBounds = [(10, 1300), (40, 230), (0, 90), (0, 90), (0, 90), (10, 1300), (40, 230), (0, 90), (0, 90)]
+    problemBounds = [(10., 1300.), (40., 230.), (0., 90.), (0., 90.), (0., 90.), (10., 1300.), (40., 230.), (0., 90.), (0., 90.)]
 
-    result = skopt.forest_minimize(TwoFilterFitness, problemBounds, verbose = True, n_calls = numIters, n_random_starts = int(np.ceil(numIters/10)))
+    result = skopt.forest_minimize(TwoFilterFitness, problemBounds, verbose = True, n_calls = numIters, n_random_starts = int(np.ceil(numIters/10)), base_estimator = "ET")
 
     print("Result determined! Here are the stats:")
     print("Best figure of merit: " + str(-1 * result.fun))
     print("Parameters giving this result: " + str(result.x))
+    tree = result.models[-1].estimators_[5]
+    print("Feature Importance: " + str(result.models[-1].feature_importances_))
+    export_graphviz(tree, out_file = "tree_output.dot", precision = 2, impurity = False)
+
+    return
+
+def Sensitivity(optimalParams):
+    """
+    Determine the sensitivity of each continuous filter parameter to perturbation.
+    """
+
+    # Determine the reference FoM.
+    optimalFoM = TwoFilterFitness(optimalParams)
+    print("Optimal figure of merit: " + str(optimalFoM))
+
+    # Match the list values to variable names.
+    variableNames = ["Bfield 1", "Temperature 1", "Etheta", "Btheta 1", "Bphi 1", "Bfield 2", "Temperature 2", "Btheta 2", "Bphi 2"]
+    
+    # List the perturbations.
+    perturbationsPositive = [1e-5, 2e-5, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-2, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500]
+    perturbationsNegative = np.multiply(-1, perturbationsPositive)
+
+    print("Testing positive perturbations:")
+    for index, param in enumerate(optimalParams):
+        for perturbation in perturbationsPositive:
+            # Apply the perturbation.
+            perturbParams = optimalParams.copy()
+            perturbParams[index] = param + perturbation
+            perturbFoM = TwoFilterFitness(perturbParams)
+
+            if perturbFoM/optimalFoM <= 0.99 or perturbFoM/optimalFoM >= 1.01:
+                print("Sensitivity of " + str(variableNames[index]) + ": Change of 1% from increase by " + str(perturbation))
+                break
+
+    print("Testing negative perturbations:")
+    for index, param in enumerate(optimalParams):
+        for perturbation in perturbationsNegative:
+            # Apply the perturbation.
+            perturbParams = optimalParams.copy()
+            perturbParams[index] = param + perturbation
+            perturbFoM = TwoFilterFitness(perturbParams)
+
+            if perturbFoM/optimalFoM <= 0.99 or perturbFoM/optimalFoM >= 1.01:
+                print("Sensitivity of " + str(variableNames[index]) + ": Change of 1% from decrease by " + str(perturbation))
+                break
 
     return
 
@@ -126,4 +172,7 @@ if __name__ == "__main__":
     #LiteratureTest()
 
     # Run the optimisation.
-    Optimise(10000)
+    Optimise(20000)
+
+    # Determine the sensitivity of variables.
+    #Sensitivity([314, 109, 50, 86, 59, 199, 77, 77, 2])

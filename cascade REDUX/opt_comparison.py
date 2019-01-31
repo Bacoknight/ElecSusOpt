@@ -13,6 +13,7 @@ from matplotlib import pyplot as plt
 from skopt.plots import plot_convergence
 import time
 from mpi4py import MPI
+from sklearn.tree import export_graphviz
 
 # Global parameters.
 baseParams = {"Elem": "Rb", "lcell": 5e-3, "Dline": "D2", "rb85frac": 72.17}
@@ -221,8 +222,8 @@ def ComparePaper(maxIters, numRuns):
             # Initialise the parameters to be varied.
             inputParams = lmfit.Parameters()
 
-            # NOTE: Multiplied by 10 for comparable times to other methods.
-            for run in range(numRuns * 10):
+            # NOTE: Iterations are runs for Cobyla.
+            for run in range(maxIters):
                 # Start timing.
                 cobylaStartTime = time.time()
 
@@ -231,7 +232,7 @@ def ComparePaper(maxIters, numRuns):
                     inputParams.add(cobylaParams[i][0], min = cobylaParams[i][1], max = cobylaParams[i][2], vary = True, value = np.random.uniform(cobylaParams[i][1], cobylaParams[i][2]))
                     
                 # Perform optimisation.
-                optimiser = lmfit.minimize(FitnessLMFit, inputParams, method = "cobyla", options = {"maxiter": maxIters}, iter_cb = iter_cb)
+                optimiser = lmfit.minimize(FitnessLMFit, inputParams, method = "cobyla", options = {"maxiter": numRuns}, iter_cb = iter_cb)
 
             # Compute required values
             avgRuntime = np.average(cobylaTimeList)
@@ -251,9 +252,10 @@ def ComparePaper(maxIters, numRuns):
             print("Average time required for success: " + str(avgRuntime))
             print("Fastest convergence time: " + str(fastestTime))
             print("------------------------------------------------------------------------------------------------------------------")
-
+        
         else:
 
+            # Test skopt algorithms.
             # Define the problem bounds.
             skoptBounds = [(10, 1300), (40, 230), (0, 90), (0, 90)]
 
@@ -269,6 +271,7 @@ def ComparePaper(maxIters, numRuns):
                 seedList = np.empty(numRuns, dtype = "i")
                 comm.Recv([seedList, MPI.INT], source = 1)
                 
+            print("Seed list and rank:")
             print(seedList, rank)
 
             strategyList = [("GP", "Bayesian optimisation"), ("RF", "Random forest"), ("ET", "Extra trees"), ("GBRT", "Gradient boosted random trees"), ("DUMMY", "Random sampling")] 
@@ -279,7 +282,7 @@ def ComparePaper(maxIters, numRuns):
             for run in range(numRuns):
 
                 startTime = time.time()
-                optimiser = skopt.Optimizer(skoptBounds, base_estimator = strategyList[rank - 1][0], n_initial_points = int(np.ceil(maxIters/10)), random_state = seedList[run])
+                optimiser = skopt.Optimizer(skoptBounds, base_estimator = strategyList[rank - 2][0], n_initial_points = int(np.ceil(maxIters/10)), random_state = seedList[run])
 
                 for iteration in range(maxIters):
 
@@ -312,7 +315,7 @@ def ComparePaper(maxIters, numRuns):
             numSuccess = len(iterList)
             successRate = numSuccess/numRuns
 
-            print(strategyList[rank - 1][1] + " testing complete! Here are the stats:")
+            print(strategyList[rank - 2][1] + " testing complete! Here are the stats:")
             print("Number of successful runs: " + str(numSuccess) + " (Success rate of " + str(successRate) + ")")
             print("Average iterations required for success: " + str(avgIters))
             print("Average time required for success: " + str(avgRuntime))
@@ -350,8 +353,8 @@ def ComparePaper(maxIters, numRuns):
         # Initialise the parameters to be varied.
         inputParams = lmfit.Parameters()
 
-        # NOTE: Multiplied for comparable times.
-        for run in range(numRuns * 10):
+        # NOTE: Max iterations and runs are swapped for Cobyla
+        for run in range(maxIters):
             # Start timing.
             cobylaStartTime = time.time()
 
@@ -360,7 +363,7 @@ def ComparePaper(maxIters, numRuns):
                 inputParams.add(cobylaParams[i][0], min = cobylaParams[i][1], max = cobylaParams[i][2], vary = True, value = np.random.uniform(cobylaParams[i][1], cobylaParams[i][2]))
                 
             # Perform optimisation.
-            optimiser = lmfit.minimize(FitnessLMFit, inputParams, method = "cobyla", options = {"maxiter": maxIters}, iter_cb = iter_cb)
+            optimiser = lmfit.minimize(FitnessLMFit, inputParams, method = "cobyla", options = {"maxiter": numRuns}, iter_cb = iter_cb)
 
         # Compute required values
         avgRuntime = np.average(cobylaTimeList)
@@ -381,13 +384,14 @@ def ComparePaper(maxIters, numRuns):
         print("Fastest convergence time: " + str(fastestTime))
         print("------------------------------------------------------------------------------------------------------------------")
 
+        # Test skopt algorithms.
         # Define the problem bounds.
         skoptBounds = [(10, 1300), (40, 230), (0, 90), (0, 90)]
 
         # Give each algorithm the same seeds so they start from the same place.
         seedList = np.random.randint(1e6, size = numRuns)
+        print("Seed list:")
         print(seedList)
-        
 
         strategyList = [("GP", "Bayesian optimisation"), ("RF", "Random forest"), ("ET", "Extra trees"), ("GBRT", "Gradient boosted random trees"), ("DUMMY", "Random sampling")] 
 
@@ -471,8 +475,8 @@ def Compare5D(maxIters, numRuns):
             # Initialise the parameters to be varied.
             inputParams = lmfit.Parameters()
 
-            # NOTE: Multiplied by 10 for comparable times.
-            for run in range(numRuns * 10):
+            # NOTE: Max iterarions and number of runs was swapped for Cobyla.
+            for run in range(maxIters):
                 # Start timing.
                 cobylaStartTime = time.time()
 
@@ -481,7 +485,7 @@ def Compare5D(maxIters, numRuns):
                     inputParams.add(cobylaParams[i][0], min = cobylaParams[i][1], max = cobylaParams[i][2], vary = True, value = np.random.uniform(cobylaParams[i][1], cobylaParams[i][2]))
                     
                 # Perform optimisation.
-                optimiser = lmfit.minimize(FitnessLMFit, inputParams, method = "cobyla", options = {"maxiter": maxIters})
+                optimiser = lmfit.minimize(FitnessLMFit, inputParams, method = "cobyla", options = {"maxiter": numRuns})
 
                 # Optimisation complete, get the best result.
                 bestParams = optimiser.params.valuesdict()
@@ -504,9 +508,10 @@ def Compare5D(maxIters, numRuns):
             print("Average FoM per unit iteration: " + str(avgFoMPerIter))
             print("Absolute best FoM determined: " + str(absBestFoM))
             print("------------------------------------------------------------------------------------------------------------------")
-
+        
         else:
 
+            # Test skopt algorithms.
             # Define the problem bounds.
             skoptBounds = [(10, 1300), (40, 230), (0, 90), (0, 90), (0, 90)]
 
@@ -518,7 +523,7 @@ def Compare5D(maxIters, numRuns):
                 comm.Send([seedList, MPI.INT], dest = 4)
                 comm.Send([seedList, MPI.INT], dest = 5)
             else:   
-                # Obtain the seed list. 
+                # Obtain the seed list.
                 seedList = np.empty(numRuns, dtype = "i")
                 comm.Recv([seedList, MPI.INT], source = 1)
 
@@ -577,13 +582,13 @@ def Compare5D(maxIters, numRuns):
         cobylaStartTime = None
 
         # Define all parameters for use in lmfit. Each parameter is given a name (exactly the same as in the ElecSus params dict), its minimum value, and its maximum value.
-        cobylaParams = [("Bfield", 10, 1300), ("T", 50, 230), ("Btheta", 0, np.pi/2.0), ("Etheta", 0, np.pi/2.0), ("Bphi", 0, np.pi/2.0)]
+        cobylaParams = [("Bfield", 10., 1300.), ("T", 50., 230.), ("Btheta", 0, np.pi/2.0), ("Etheta", 0, np.pi/2.0), ("Bphi", 0, np.pi/2.0)]
 
         # Initialise the parameters to be varied.
         inputParams = lmfit.Parameters()
 
-        # NOTE: Multiplied by 10 for comparable times.
-        for run in range(numRuns * 10):
+        # NOTE: Iterations and runs are swapped for Cobyla.
+        for run in range(maxIters):
             # Start timing.
             cobylaStartTime = time.time()
 
@@ -592,7 +597,7 @@ def Compare5D(maxIters, numRuns):
                 inputParams.add(cobylaParams[i][0], min = cobylaParams[i][1], max = cobylaParams[i][2], vary = True, value = np.random.uniform(cobylaParams[i][1], cobylaParams[i][2]))
                     
             # Perform optimisation.
-            optimiser = lmfit.minimize(FitnessLMFit, inputParams, method = "cobyla", options = {"maxiter": maxIters})
+            optimiser = lmfit.minimize(FitnessLMFit, inputParams, method = "cobyla", options = {"maxiter": numRuns})
 
             # Optimisation complete, get the best result.
             bestParams = optimiser.params.valuesdict()
@@ -616,11 +621,13 @@ def Compare5D(maxIters, numRuns):
         print("Absolute best FoM determined: " + str(absBestFoM))
         print("------------------------------------------------------------------------------------------------------------------")
 
+        # Test skopt algorithms.
         # Define the problem bounds.
         skoptBounds = [(10, 1300), (40, 230), (0, 90), (0, 90,), (0, 90)]
 
         # Give each algorithm the same seeds so they start from the same place.
         seedList = np.random.randint(1e6, size = numRuns)
+        print("Seed list:")
         print(seedList)
 
         strategyList = [("GP", "Bayesian optimisation"), ("RF", "Random forest"), ("ET", "Extra trees"), ("GBRT", "Gradient boosted random trees"), ("DUMMY", "Random sampling")] 
@@ -672,7 +679,7 @@ def Compare5D(maxIters, numRuns):
 
 if __name__ == "__main__":
     # Run the first comparison test.
-    ComparePaper(10, 1)
+    ComparePaper(1000, 10)
 
     # Run the second comparison test.
-    Compare5D(10, 1)
+    Compare5D(1000, 10)
