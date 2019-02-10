@@ -6,8 +6,12 @@ Note that this therefore doesn't allow for the intermediary polariser yet.
 import skopt
 import numpy as np
 from elecsus import elecsus_methods as elecsus
+from sklearn.externals import joblib
 from scipy.integrate import simps as integrate
 from sklearn.tree import export_graphviz
+from tqdm import tqdm
+import pandas as pd
+import shap
 
 # Define some global parameters.
 globalDetuning = np.linspace(-25000, 25000, 1000)
@@ -82,7 +86,7 @@ def TwoFilterFitness(inputParams):
     ENBW = ((integrate(filterTransmission, globalDetuning)/filterTransmission.max().real)/1e3).real
 
     figureOfMerit = (filterTransmission.max()/ENBW).real
-    
+
     if np.isnan(figureOfMerit):
         # Usually occurs in the case of high temperatures and B fields, since the transmission is just a flat line.
         print("Figure of merit is NaN! Here are the input parameters:")
@@ -101,7 +105,7 @@ def LiteratureTest():
     print("Reproducing literature value, we're looking for around 1.2:")
 
     inputParams = [270, 86.7, 6, 0, 0, 240, 79, 90, 0]
-    
+
     print(TwoFilterFitness(inputParams))
 
     return
@@ -113,14 +117,28 @@ def Optimise(numIters):
 
     problemBounds = [(10., 1300.), (40., 230.), (0., 90.), (0., 90.), (0., 90.), (10., 1300.), (40., 230.), (0., 90.), (0., 90.)]
 
-    result = skopt.forest_minimize(TwoFilterFitness, problemBounds, verbose = True, n_calls = numIters, n_random_starts = int(np.ceil(numIters/10)), base_estimator = "ET")
+    #result = skopt.forest_minimize(TwoFilterFitness, problemBounds, verbose = True, n_calls = numIters, n_random_starts = int(np.ceil(numIters/10)), base_estimator = "ET")
+    optimizer = skopt.Optimizer(dimensions = problemBounds, n_random_starts = int(np.ceil(numIters/10)), base_estimator = "ET")
 
-    print("Result determined! Here are the stats:")
+    for _ in tqdm(range(numIters)):
+
+        # Ask for the next point.
+        nextPoint = optimizer.ask()
+
+        if len(optimizer.models) != 0:
+            # Clear old models, to prevent memory overload.
+            optimizer.models = [optimizer.models[-1]]
+
+        pointVal = TwoFilterFitness(nextPoint)
+
+        result = optimizer.tell(nextPoint, pointVal)
+
+    print("Result determined for cascaded filters! Here are the stats:")
     print("Best figure of merit: " + str(-1 * result.fun))
     print("Parameters giving this result: " + str(result.x))
-    tree = result.models[-1].estimators_[5]
-    print("Feature Importance: " + str(result.models[-1].feature_importances_))
-    export_graphviz(tree, out_file = "tree_output.dot", precision = 2, impurity = False)
+    # tree = result.models[-1].estimators_[5]
+    # print("Feature Importance: " + str(result.models[-1].feature_importances_))
+    # export_graphviz(tree, out_file = "tree_output.dot", precision = 2, impurity = False)
 
     return
 
@@ -135,7 +153,7 @@ def Sensitivity(optimalParams):
 
     # Match the list values to variable names.
     variableNames = ["Bfield 1", "Temperature 1", "Etheta", "Btheta 1", "Bphi 1", "Bfield 2", "Temperature 2", "Btheta 2", "Bphi 2"]
-    
+
     # List the perturbations.
     perturbationsPositive = [1e-5, 2e-5, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-2, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500]
     perturbationsNegative = np.multiply(-1, perturbationsPositive)
@@ -166,13 +184,62 @@ def Sensitivity(optimalParams):
 
     return
 
+def ShapImportance(numIters):
+    """
+    Determine the SHAP importance of the variables.
+    """
+
+    # First create the model.
+    problemBounds = [(10., 1300.), (40., 230.), (0., 90.), (0., 90.), (0., 90.), (10., 1300.), (40., 230.), (0., 90.), (0., 90.)]
+
+    #result = skopt.forest_minimize(TwoFilterFitness, problemBounds, verbose = True, n_calls = numIters, n_random_starts = int(np.ceil(numIters/10)), base_estimator = "ET")
+    optimizer = skopt.Optimizer(dimensions = problemBounds, n_random_starts = int(np.ceil(numIters/10)), base_estimator = "ET")
+
+    for _ in tqdm(range(numIters)):
+
+        # Ask for the next point.
+        nextPoint = optimizer.ask()
+
+        if len(optimizer.models) != 0:
+            # Clear old models, to prevent memory overload.
+            optimizer.models = [optimizer.models[-1]]
+
+        pointVal = TwoFilterFitness(nextPoint)
+
+        result = optimizer.tell(nextPoint, pointVal)
+
+    print("Result determined for cascaded filters! Here are the stats:")
+    print("Best figure of merit: " + str(-1 * result.fun))
+    print("Parameters giving this result: " + str(result.x))
+
+    bestIndex = np.argwhere(result.func_vals == result.fun)[0][0]
+    # Create a Pandas dataframe to hold the optimiser results.
+    resultDataframe = pd.DataFrame(optimizer.Xi, columns = [r"$|\textbf{B}_{\textrm{1}}|$", r"$T_{\textrm{1}}$", r"$\theta_{\textrm{E}}$", 
+    r"$\theta_{\textrm{B}_1}$", r"$\phi_{\textrm{B}_1}$", r"$|\textbf{B}_{\textrm{2}}|$", r"$T_{\textrm{2}}$", r"$\theta_{\textrm{B}_2}$", r"$\phi_{\textrm{B}_2}$"])
+
+    # Save the model in a pickle file.
+    joblib.dump((optimizer.models[-1], resultDataframe, bestIndex), "shap_data.pkl")
+    print("Data saved to shap_data.pkl.")
+
+    # Predict the best value.
+    expectMinLoc, expectMinVal = skopt.expected_minimum(result)
+
+    print("Predicted best point: {}".format(expectMinLoc))
+    print("Predicted (abs) value at this point: {}".format(abs(expectMinVal)))
+    print("Actual (abs) value at this point: {}".format(abs(TwoFilterFitness(expectMinLoc))))
+
+    return
+
 if __name__ == "__main__":
 
     # Test the fitness function against literature.
     #LiteratureTest()
 
     # Run the optimisation.
-    Optimise(20000)
+    #Optimise(6000)
 
     # Determine the sensitivity of variables.
     #Sensitivity([314, 109, 50, 86, 59, 199, 77, 77, 2])
+
+    # Obtain SHAP importance.
+    ShapImportance(1000)

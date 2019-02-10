@@ -12,6 +12,8 @@ import numpy as np
 from matplotlib.pyplot import cm
 import matplotlib.image as mpimg
 import matplotlib.transforms as mtrans
+from sklearn.externals import joblib
+import shap
 
 from PIL import Image
 from subprocess import check_call
@@ -22,7 +24,7 @@ sns.set_style("ticks")
 
 def PlotTreeModels():
     """
-    Shows how the ExtraTrees model evolves over a certain number of iterations. It will show the model after the random sampling, half way through the 
+    Shows how the ExtraTrees model evolves over a certain number of iterations. It will show the model after the random sampling, half way through the
     optimisation and at the end. It will also show the sparsity of the model after these iterations using the export_to_graphviz function.
     Obtains the data from visualise_iters.txt.
     """
@@ -109,7 +111,7 @@ def PlotAcqComp():
         data = json.load(jsonFile)
         realIters = range(1, data.get("numIters", 100) + 1)
         optimiserList = data.get("optimiserList")
-    
+
     fig = plt.figure("Acquisition function comparison")
     fig.set_size_inches(19.20, 10.80)
     pathPlot = fig.add_subplot(121)
@@ -128,18 +130,18 @@ def PlotAcqComp():
 
         for run in range(len(optimiser[2])):
             pathPlot.plot(realIters, optimiser[3][run], c = optimiser[1], alpha = 0.2)
-    
+
     # Plot the time bar chart.
     timePlot.bar(nameList, timeList, align = "center", color = barColourList, yerr = errorList, capsize = 20)
     timePlot.set_xlabel("Acquisition Function")
     timePlot.set_ylabel("Average runtime for " + str(data.get("numIters", 100)) + " iterations (s)")
-    
+
     pathPlot.legend()
     pathPlot.set_xlim(1, data.get("numIters", 100))
     pathPlot.set_ylim(bottom = 0)
     pathPlot.set_xlabel("Iteration number")
     pathPlot.set_ylabel(r"Best Figure of Merit (GHz$^{-1}$)")
-    
+
     plt.tight_layout()
     plt.savefig("acq_plot.pdf")
     plt.show()
@@ -185,7 +187,7 @@ def PlotVariableImportance():
 
     # Define the sorting list. This is so the graphs look coherent.
     variableOrder = [("B field 1", r"$|\textbf{B}_{\textrm{1}}|$"), ("Temperature 1", r"$T_{\textrm{1}}$"), ("E theta", r"$\theta_{\textrm{E}}$"),
-    ("B theta 1", r"$\theta_{\textrm{B}_1}$"), ("B phi 1", r"$\phi_{\textrm{B}_1}$"), ("B field 2", r"$|\textbf{B}_{\textrm{2}}|$"), ("Temperature 2", r"$T_{\textrm{2}}$"), 
+    ("B theta 1", r"$\theta_{\textrm{B}_1}$"), ("B phi 1", r"$\phi_{\textrm{B}_1}$"), ("B field 2", r"$|\textbf{B}_{\textrm{2}}|$"), ("Temperature 2", r"$T_{\textrm{2}}$"),
     ("B theta 2", r"$\theta_{\textrm{B}_2}$"), ("B phi 2", r"$\phi_{\textrm{B}_2}$"), ("Free polariser angle", r"$\theta_{\textrm{P}}$")]
 
     # Give each variable its own colour.
@@ -241,13 +243,37 @@ def PlotVariableImportance():
     plt.show()
 
     return
-        
 
+def PlotShap():
+    """
+    Plots SHAP force graphs in an attempt to explain the model.
+    """
+
+    model, resultDataframe, bestRow = joblib.load("shap_data.pkl")
+
+    # Initialise SHAP.
+    explainer = shap.TreeExplainer(model)
+
+    # Determine the SHAP values for every row.
+    shapValues = explainer.shap_values(resultDataframe)
+
+    # Checks to make sure the SHAP library is working fine.
+    # for index, row in resultDataframe.iterrows():
+    #     # Should be all True.
+    #     print(np.isclose((explainer.expected_value + np.sum(shapValues[index,:])), model.predict(np.array(row).reshape(1, -1))))
+
+    # Generate cool plots.
+    shap.force_plot(-1 * explainer.expected_value, -1 * shapValues[bestRow,:], features = None, feature_names = list(resultDataframe.columns.values),  matplotlib = True)
+    shap.summary_plot(shapValues, resultDataframe)
+
+    return
 if __name__ == "__main__":
-    PlotAcqComp()
+    # PlotAcqComp()
 
-    PlotParamTuning()
+    # PlotParamTuning()
 
-    PlotVariableImportance()
+    # PlotVariableImportance()
 
-    PlotTreeModels()
+    # PlotTreeModels()
+
+    PlotShap()

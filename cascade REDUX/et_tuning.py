@@ -6,6 +6,8 @@ being used with its default parameters. This module seeks to find the best set o
 from elecsus import elecsus_methods as elecsus
 import numpy as np
 import skopt
+from skopt import callbacks
+from skopt.callbacks import CheckpointSaver
 from matplotlib.pyplot import cm
 from scipy.integrate import simps as integrate
 from matplotlib import pyplot as plt
@@ -15,6 +17,8 @@ from tqdm import tqdm
 from mpi4py import MPI
 from random import shuffle
 import json
+import os.path
+from shap import explainers
 
 # Global parameters.
 baseParamsFilter1 = {"Elem": "Rb", "lcell": 5e-3, "Dline": "D2", "rb85frac": 72.17}
@@ -335,18 +339,39 @@ def ParameterFitness(inputParams):
     """
     
     # Explicitly define number of iterations.
-    numIters = 100
+    numIters = 5000
 
     # Define the bounds of the problem.
     problemBounds = [(10., 1300.), (40., 230.), (0., 90.), (0., 90.), (0., 90.), (10., 1300.), (40., 230.), (0., 90.), (0., 90.)]
 
-    results = [skopt.forest_minimize(base_estimator = "ET", acq_func = "LCB", func = TwoFilterFitness, dimensions = problemBounds, n_calls = numIters, n_random_starts = np.max([int(np.ceil(numIters * inputParams[0])), 1]), 
-            kappa = inputParams[1], random_state = run) for run in range(5)]
+    minIters = []
+    bestFoMs = []
 
-    minIters = [np.argwhere(result.func_vals == result.fun)[0][0] + 1 for result in results]
-    bestFoMs = [result.fun for result in results]
+    for run in range(1):
+        
+        optimizer = skopt.Optimizer(dimensions = problemBounds, base_estimator = "ET", acq_func = "LCB", n_random_starts = np.max([int(np.ceil(numIters * inputParams[0])), 1]), acq_func_kwargs= {"kappa": inputParams[1]},
+        random_state = run)
 
-    return  np.mean(np.divide(bestFoMs, minIters), axis = 0)
+        for _ in range(numIters):
+
+            # Ask for the next point.
+            nextPoint = optimizer.ask()
+
+            if len(optimizer.models) != 0:
+                # Clear old models, to prevent memory overload.
+                optimizer.models = [optimizer.models[-1]]
+
+            pointVal = TwoFilterFitness(nextPoint)
+
+            result = optimizer.tell(nextPoint, pointVal)
+
+    #results = [skopt.forest_minimize(base_estimator = "ET", acq_func = "LCB", func = TwoFilterFitness, dimensions = problemBounds, n_calls = numIters, n_random_starts = np.max([int(np.ceil(numIters * inputParams[0])), 1]), 
+    #        kappa = inputParams[1], random_state = run) for run in range(1)]
+
+        minIters.append(np.argwhere(result.func_vals == result.fun)[0][0] + 1)
+        bestFoMs.append(result.fun)
+
+    return  np.mean(np.divide(bestFoMs, minIters), axis = 0) * 1000
 
 def BayesianTuning(numIters):
     """
@@ -354,9 +379,26 @@ def BayesianTuning(numIters):
     """
 
     # Define the bounds of the problem. First is fraction, second is kappa.
-    problemBounds = [(0., 1.), (0., 20.)]
+    problemBounds = [(0., 1.), (0., 1000.)]
 
-    result = skopt.gp_minimize(ParameterFitness, problemBounds, n_calls = numIters, n_random_starts = int(np.ceil(numIters/10)), verbose = True)
+    # This is a long iteration process so it is possible to run out of memory or time out. We therefore use a checkpoint saver which saves each iteration to a file, allowing the state to be restored later.
+    checkpointSaver = CheckpointSaver("./bayes_tuning.pkl", compress = 9)
+
+    if os.path.isfile("bayes_tuning.pkl"):
+        # Pick up from where the optimisation left off.
+        prevRes = skopt.load("./bayes_tuning.pkl")
+        print("Loaded " + str(len(prevRes.x_iters)) + " previous iterations.")
+        print("Current best parameters: \nFraction = " + str(prevRes.x[0]) + "\nKappa = " + str(prevRes.x[1]))
+        if len(prevRes.x_iters) < int(np.ceil(numIters/10)):
+            # Random seeding would be incomplete.
+            randomEvals = int(np.ceil(numIters/10)) - len(prevRes.x_iters)
+        else:
+            # Random seeding complete.
+            randomEvals = 0
+        result = skopt.gp_minimize(ParameterFitness, problemBounds, n_calls = numIters, n_random_starts = randomEvals, verbose = True, callback = [checkpointSaver], x0 = prevRes.x_iters, y0 = prevRes.func_vals)
+    else:
+        # Start a new optimisation algorithm.
+        result = skopt.gp_minimize(ParameterFitness, problemBounds, n_calls = numIters, n_random_starts = int(np.ceil(numIters/10)), verbose = True, callback = [checkpointSaver])
 
     print("Optimisation Complete! Here are the stats:")
     print(result.x)
@@ -377,4 +419,4 @@ if __name__ == "__main__":
     #ParameterFitness([0.1, 1.92])
 
     # Use Bayesian Optimisation to tune the algorithm.
-    BayesianTuning(500)
+    BayesianTuning(100)

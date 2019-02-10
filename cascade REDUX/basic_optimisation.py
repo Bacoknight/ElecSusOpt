@@ -455,19 +455,19 @@ def VisualiseResults(numIters):
 
 if __name__ == "__main__":
     # Test the fitness function.
-    #TestFitness()
+    TestFitness()
 
     # Run the optimisation algorithms in 1D.
     #Optimise1D(50)
 
     # Run the optimisation of the 'full' single filter problem.
-    #FullOptimisation(1000)
+    FullOptimisation(1000)
 
     # Create a convergence plot of the strategies available on skopt.
     #ConvergencePlot(50)
 
     # Show what the acquisition functions see.
-    AcquisitionPlot(50)
+    #AcquisitionPlot(50)
 
     # Visualise the results of a single optimisation.
     #VisualiseResults(1000)
