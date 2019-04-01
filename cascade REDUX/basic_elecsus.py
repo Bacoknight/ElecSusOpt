@@ -5,12 +5,17 @@ This module will prove that I can call ElecSus properly and use it to recreate v
 from elecsus import elecsus_methods as elecsus
 import numpy as np
 import matplotlib.pyplot as plt
+plt.rc("text", usetex = True)
+
+import seaborn as sns
+sns.set_context("poster")
+sns.set_style("ticks")
 import time
 from scipy.integrate import simps as integrate
 
 # Quick start parameters.
-globalParams = {'Bfield':270, 'rb85frac':72.17, 'Btheta':np.deg2rad(0), 'Etheta':np.deg2rad(6), 'lcell':5e-3, 'T':86.7, 'Dline':'D2', 'Elem':'Rb'}
-globalDetuning = np.linspace(-25000, 25000, 1000)
+globalParams = {'Bfield':230, 'rb85frac':72.17, 'Btheta':np.deg2rad(83), 'Etheta':np.deg2rad(6), 'lcell':5e-3, 'T':126, 'Dline':'D2', 'Elem':'Rb'}
+globalDetuning = np.linspace(-25000, 25000, 20000)
 
 def ProduceTransmissionSingle(detuning, inputParams):
     """
@@ -47,13 +52,18 @@ def ProduceTransmissionSingle(detuning, inputParams):
     print("Maximum transmission: " + str(singleFilterTransmission.max().real))
 
     # Plot the output.
-    plt.plot(detuning/1e3, singleFilterTransmission)
+    fig = plt.figure("Basic transmission")
+    fig.set_size_inches(19.20, 10.80)
+    plt.plot(detuning/1e3, singleFilterTransmission * 100)
 
     # Make the graph pretty.
-    plt.xlabel("Detuning (GHz)")
-    plt.ylabel("Transmission")
+    plt.xlabel(r'$\Delta$ (GHz)')
+    plt.ylabel(r'Transmission (\%)')
+    plt.ylim(bottom = 0)
+    plt.xlim(detuning[0]/1e3, detuning[-1]/1e3)
+    plt.tight_layout()
 
-    plt.show()
+    #plt.show()
 
     return
 
@@ -222,11 +232,16 @@ def TwoFilterStats(detuning, inputParams1, inputParams2):
     print("Maximum transmission: " + str(filterTransmission.max()))
 
     # Plot the output.
-    plt.plot(detuning/1e3, filterTransmission.real)
+    fig = plt.figure("Basic transmission")
+    fig.set_size_inches(19.20, 10.80)
+    plt.plot(detuning/1e3, filterTransmission * 100)
 
     # Make the graph pretty.
-    plt.xlabel("Detuning (GHz)")
-    plt.ylabel("Transmission")
+    plt.xlabel(r'$\Delta$ (GHz)')
+    plt.ylabel(r'Transmission (\%)')
+    plt.ylim(bottom = 0)
+    plt.xlim(detuning[0]/1e3, detuning[-1]/1e3)
+    plt.tight_layout()
 
     plt.show()
 
@@ -235,24 +250,24 @@ def TwoFilterStats(detuning, inputParams1, inputParams2):
 if __name__ == "__main__":
 
     # Produce a single transmission output using the global parameters.
-    ProduceTransmissionSingle(globalDetuning, globalParams)
+    #ProduceTransmissionSingle(globalDetuning, globalParams)
 
-    # Test the transmission against the four graphs shown in the literature for optimised filters.
-    TestTransmission(globalDetuning)
+    # # Test the transmission against the four graphs shown in the literature for optimised filters.
+    # TestTransmission(globalDetuning)
 
-    # Produce a single ENBW using the global parameters.
-    ProduceENBW(globalDetuning, globalParams)
+    # # Produce a single ENBW using the global parameters.
+    # ProduceENBW(globalDetuning, globalParams)
 
-    # Test the ENBW against the literature values.
-    TestENBW(globalDetuning)
+    # # Test the ENBW against the literature values.
+    # TestENBW(globalDetuning)
 
-    # Produce a single figure of merit using the global parameters.
-    ProduceFoM(globalDetuning, globalParams)
+    # # Produce a single figure of merit using the global parameters.
+    #ProduceFoM(globalDetuning, globalParams)
 
-    # Test the FoM against the literature values.
-    TestFoM(globalDetuning)
+    # # Test the FoM against the literature values.
+    # TestFoM(globalDetuning)
 
-    # Test the dual filter setup using the (only) literature values.
+    # # Test the dual filter setup using the (only) literature values.
     inputParams1 = {'Bfield':270, 'rb85frac':72.17, 'Btheta':np.deg2rad(0), 'Etheta':np.deg2rad(6), 'lcell':5e-3, 'T':86.7, 'Dline':'D2', 'Elem':'Rb'}
     inputParams2 = {'Bfield':240, 'rb85frac':72.17, 'Btheta':np.deg2rad(90), 'Etheta':np.deg2rad(6), 'lcell':50e-3, 'T':79, 'Dline':'D2', 'Elem':'Rb'}
     TwoFilterStats(globalDetuning, inputParams1, inputParams2)

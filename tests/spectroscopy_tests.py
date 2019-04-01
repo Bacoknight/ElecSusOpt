@@ -21,6 +21,7 @@ Last updated 2018-02-19 JK
 from __future__ import (division, print_function, absolute_import)
 
 import matplotlib.pyplot as plt
+plt.rc("text", usetex = True)
 import numpy as np
 from scipy.signal import find_peaks as peaks
 from scipy.integrate import simps as integrate
@@ -33,12 +34,11 @@ from elecsus.elecsus_methods import calculate as get_spectra
 from elecsus.libs.spectra import calc_chi as get_chi
 
 import seaborn as sns
-sns.set_context("notebook")
+sns.set_context("talk")
 sns.set_style("ticks")
-sns.despine()
 
 # Global constants
-centreFreqR87 = (380.6685) * 1e6 # MHz. For rubidium only!
+centreFreqR87 = (508.84871) * 1e6 # MHz. For sodium only!
 speedLight = 3e8
 centreKR87 = 2 * np.pi/(speedLight/centreFreqR87)
 
@@ -52,7 +52,7 @@ def FourStepGraph():
 	- The transmission.
 	"""
 	# Define the frequency range to be inspected in MHz.
-	detuning = np.arange(-10000,10000,10)
+	detuning = np.linspace(-25000, 25000, 20000)
 
 	# Define the experimental parameters.
 	p_dict = {'Bfield':144, 'rb85frac':72.17, 'Btheta':0, 'lcell':5e-3, 'T':245, 'Dline':'D2', 'Elem':'Na', 'Etheta': 0}
@@ -87,55 +87,61 @@ def FourStepGraph():
 	fig = plt.figure("Transmission buildup plot")
 	fig.set_size_inches(19.20, 10.80)
 
-	ax1 = plt.subplot(4,1,1)
-	ax2 = plt.subplot(4,1,3, sharex=ax1)
-	ax3 = plt.subplot(4,1,4, sharex=ax2)
-	ax4 = plt.subplot(4,1,2, sharex=ax3)
+	ax1 = plt.subplot(224)
+	ax2 = plt.subplot(222)
+	ax3 = plt.subplot(221)
+	ax4 = plt.subplot(223)
 	ax5 = ax4.twinx()
 
-	plt.setp(ax1.get_xticklabels(), visible=False)
-	plt.setp(ax2.get_xticklabels(), visible=False)
+	# plt.setp(ax1.get_xticklabels(), visible=False)
+	# plt.setp(ax2.get_xticklabels(), visible=False)
 	plt.setp(ax3.get_yticklabels(), visible=False)
-	plt.setp(ax4.get_xticklabels(), visible=False)
+	# plt.setp(ax4.get_xticklabels(), visible=False)
 	ax3.yaxis.set_ticks_position("none")
 		
-	ax1.plot(detuning/1e3, Iy, '-', color='navy', lw=2.5)
-	ax2.plot(detuning/1e3, absorptionValsPlus, 'r--', color='c', lw=2, label=r'$\sigma^{+}$')
-	ax2.plot(detuning/1e3, phaseShiftValsPlus, color='c', lw=2)
-	ax4.plot(detuning/1e3, deltaN, color='navy')
-	ax5.plot(detuning/1e3, phaseArray, color='navy')
+	ax1.plot(detuning/1e3, Iy*100, '-', color='navy', lw=2.5)
+	ax2.plot(detuning/1e3, absorptionValsPlus * 1e3, 'r--', color='c', lw=2, label=r'$\sigma^{+}$')
+	ax2.plot(detuning/1e3, phaseShiftValsPlus * 1e3, color='c', lw=2)
+	ax4.plot(detuning/1e3, deltaN * 1e4, color='navy')
+	ax5.plot(detuning/1e3, phaseArray * 10, color='navy')
 	#ax5.axhline(2, color='red', label=r'$\phi = \pi$')
 	#ax5.axhline(1.0005, color='green', label=r'$\phi = \frac{\pi}{2}$')
 
 	#Note, the following code will not work on Hamilton as it requires a later version of SciPy.
-	markerline, stemlines, baseline = ax3.stem(peakFreqPlus/1e3, peakAlphaPlus, '-.', label=r'$\sigma^{+}$')
+	markerline, stemlines, baseline = ax3.stem(peakFreqPlus/1e3, peakAlphaPlus * 1e3, '-.', label=r'$\sigma^{+}$')
 	
 	plt.setp(markerline, alpha=0)
 	plt.setp(stemlines, color='c')
 	plt.setp(baseline, linewidth=0)
 
-	ax2.plot(detuning/1e3, absorptionValsMinus, 'r--', color='m', lw=2, label=r'$\sigma^{-}$')
-	ax2.plot(detuning/1e3, phaseShiftValsMinus, color='m', lw=2)
+	ax2.plot(detuning/1e3, absorptionValsMinus * 1e3, 'r--', color='m', lw=2, label=r'$\sigma^{-}$')
+	ax2.plot(detuning/1e3, phaseShiftValsMinus * 1e3, color='m', lw=2)
 
 	#Note, the following code will not work on Hamilton as it requires a later version of SciPy.
-	markerline, stemlines, baseline = ax3.stem(peakFreqMinus/1e3, peakAlphaMinus, '-.', label=r'$\sigma^{-}$')
+	markerline, stemlines, baseline = ax3.stem(peakFreqMinus/1e3, peakAlphaMinus * 1e3, '-.', label=r'$\sigma^{-}$')
 	
 	plt.setp(markerline, alpha=0)
 	plt.setp(stemlines, color='m')
 	plt.setp(baseline, linewidth=0)
 	
-	ax3.set_xlabel('Detuning (GHz)')
-	ax1.set_ylabel('Transmission')
-	ax2.set_ylabel(r'$n_{Im}, n_{Re}$')
-	ax5.set_ylabel(r'Polarisation rotation ($1000 \pi$)')
+	ax3.set_xlabel(r'$\Delta$ (GHz)')
+	ax1.set_xlabel(r'$\Delta$ (GHz)')
+	ax2.set_xlabel(r'$\Delta$ (GHz)')
+	ax4.set_xlabel(r'$\Delta$ (GHz)')
+	ax1.set_ylabel(r'Transmission (\%)')
+	ax2.set_ylabel(r'$\Re(n) \cdot 10^{3}, \Im(n) \cdot 10^{3}$')
+	ax5.set_ylabel(r'Linear polarisation rotation ($100 \pi$)')
 	ax3.set_ylabel('Relative Transition Strength')
-	ax4.set_ylabel(r'$n_{+, Re} - n_{-, Re}$')
+	ax4.set_ylabel(r'$\Re(n_{\textrm{+}} - n_{\textrm{-}}) \cdot 10^{4}$')
 
 	ax2.legend(loc="best")
 	ax3.legend(loc="best")
 	#ax5.legend(loc="best")
 	
-	ax2.set_xlim(-10,10)
+	ax2.set_xlim(detuning[0]/1e3, detuning[-1]/1e3)
+	ax1.set_xlim(detuning[0]/1e3, detuning[-1]/1e3)
+	ax3.set_xlim(detuning[0]/1e3, detuning[-1]/1e3)
+	ax4.set_xlim(detuning[0]/1e3, detuning[-1]/1e3)
 	ax3.set_ylim(0)
 	ax1.set_ylim(0)
 
@@ -161,6 +167,8 @@ def FourStepGraph():
 	figName = str(p_dict["Elem"]) + "_" + str(p_dict["Dline"]) + "_" + str(p_dict["Bfield"]) + "_" + str(p_dict["T"]) + "_" + str(p_dict["Btheta"]) + ".pdf"
 	plt.savefig(figName)
 	print("Image saved as: " + figName)
+
+	plt.show()
 	
 	
 def OptSurfaceGraph():
@@ -217,7 +225,7 @@ def ProduceSpectrum(detuning, params, toPlot = True):
 
 	# Call ElecSus to find the output electric field from the cell.
 	try:
-		[E_out] = elecsus.calculate(detuning, E_in, params, outputs=['E_out'])
+		[E_out] = get_spectra(detuning, E_in, params, outputs=['E_out'])
 	except:
 		# There was an issue obtaining the field from ElecSus.
 		return 0
@@ -227,7 +235,7 @@ def ProduceSpectrum(detuning, params, toPlot = True):
 
 	if toPlot:
 		# Plot the result.
-		plt.plot(detuning, transmission)
+		plt.plot(detuning/1e3, transmission * 100)
 		plt.show()
 
 	return transmission
@@ -241,5 +249,6 @@ if __name__ == '__main__':
 	#globalDetuning = np.linspace(-25000, 25000, 1000)
 
 	# Define the experimental parameters.
-	#p_dict = {'Bfield':144, 'rb85frac':72.17, 'Btheta':0, 'lcell':5e-3, 'T':245, 'Dline':'D2', 'Elem':'Na', 'Etheta': 0}
-	#print(ProduceSpectrum(globalDetuning, p_dict, True))
+	# p_dict = {'Bfield':144, 'rb85frac':72.17, 'Btheta':0, 'lcell':5e-3, 'T':245, 'Dline':'D2', 'Elem':'Na', 'Etheta': 0}
+	# globalDetuning = np.linspace(-25000, 25000, 20000)
+	# print(ProduceSpectrum(globalDetuning, p_dict, True))

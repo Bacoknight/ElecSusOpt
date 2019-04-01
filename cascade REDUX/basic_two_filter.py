@@ -294,9 +294,9 @@ if __name__ == "__main__":
     # HalfFilter(globalDetuning, globalParams)
 
     # # Reproduce the literature values.
-    # inputParams1 = {'Bfield':270, 'rb85frac':72.17, 'Btheta':np.deg2rad(0), 'Etheta':np.deg2rad(6), 'lcell':5e-3, 'T':86.7, 'Dline':'D2', 'Elem':'Rb'}
-    # inputParams2 = {'Bfield':240, 'rb85frac':72.17, 'Btheta':np.deg2rad(90), 'Etheta':np.deg2rad(6), 'lcell':50e-3, 'T':79, 'Dline':'D2', 'Elem':'Rb'}
-    # TwoFilterLiterature(globalDetuning, inputParams1, inputParams2)
+    inputParams1 = {'Bfield':270, 'rb85frac':72.17, 'Btheta':np.deg2rad(0), 'Etheta':np.deg2rad(6), 'lcell':5e-3, 'T':86.7, 'Dline':'D2', 'Elem':'Rb'}
+    inputParams2 = {'Bfield':240, 'rb85frac':72.17, 'Btheta':np.deg2rad(90), 'Etheta':np.deg2rad(6), 'lcell':50e-3, 'T':79, 'Dline':'D2', 'Elem':'Rb'}
+    TwoFilterLiterature(globalDetuning, inputParams1, inputParams2)
 
     # # Test the fitness function.
     # print("Looking for about 1.2...")
@@ -306,5 +306,5 @@ if __name__ == "__main__":
     #OptimiseSimpleTwoFilter(1000)
 
     # Plot the transmission of a double filter.
-    inputParams = [314, 109, 50, 86, 59, 199, 77, 77, 2]
-    PlotTransmission(inputParams)
+    # inputParams = [314, 109, 50, 86, 59, 199, 77, 77, 2]
+    # PlotTransmission(inputParams)

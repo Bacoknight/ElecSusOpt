@@ -1,0 +1,4 @@
+digraph Tree {
+node [shape=box] ;
+0 [label="samples = 1\nvalue = -0.0"] ;
+}

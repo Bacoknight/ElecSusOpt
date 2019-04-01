@@ -9,6 +9,14 @@ from scipy.integrate import simps as integrate
 import matplotlib.pyplot as plt
 from sklearn.tree import export_graphviz    
 import json
+import shap
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rc("text", usetex = True)
+import seaborn as sns
+sns.set_context("poster")
+sns.set_style("ticks")
+
 
 # Global parameters.
 baseParams = {"Elem": "Rb", "lcell": 5e-3, "Dline": "D2", "rb85frac": 72.17}
@@ -75,7 +83,7 @@ def Fitness2D(inputParams):
     elecsusParams = baseParams.copy()
 
     # NOTE: No bPhi as of yet.
-    paramDict = {'Bfield': inputParams[0], "T": inputParams[1], 'Btheta': np.deg2rad(83), 'Etheta': np.deg2rad(6), 'Bphi': np.deg2rad(0)}
+    paramDict = {'Bfield': inputParams[0], "T": 126, 'Btheta': np.deg2rad(inputParams[1]), 'Etheta': np.deg2rad(6), 'Bphi': np.deg2rad(0)}
 
     # This is the full dictionary to use on ElecSus.
     elecsusParams.update(paramDict)
@@ -176,54 +184,63 @@ def GenerateModels2D(numIters):
     print("Random seed: " + str(seed))
 
     # First, run the optimisation.
-    result = skopt.forest_minimize(Fitness2D, [(10., 1000.), (40., 230.)], n_calls = numIters, n_random_starts = int(np.ceil(numIters/10)), random_state = seed)
+    result = skopt.forest_minimize(Fitness2D, [(10., 1300.), (0., 180.)], n_calls = numIters, n_random_starts = int(np.ceil(numIters/10)), random_state = seed)
     print("Optimisation complete! Best value: " + str(result.fun))
 
     # Obtain models after the random seeding, half the maximum iterations, and the maximum iterations.
-    modelRandom = result.models[int(np.ceil(numIters/10)) - 1]
-    modelHalf = result.models[int(np.ceil(numIters/2)) - 1]
+    # modelRandom = result.models[int(np.ceil(numIters/10)) - 1]
+    # modelHalf = result.models[int(np.ceil(numIters/2)) - 1]
     modelEnd = result.models[-1]
 
-    # Generate a graph of the objective function values as well as the model predictions of the function.
-    bRange = np.linspace(10, 1000, num = 100)
-    tRange = np.linspace(40, 230, num = 100)
+    # # Generate a graph of the objective function values as well as the model predictions of the function.
+    # bRange = np.linspace(10, 1000, num = 500)
+    # tRange = np.linspace(40, 230, num = 500)
 
-    Bs, Ts = np.meshgrid(bRange, tRange)
+    # objVals = []
+    # for B in bRange:
+    #     for T in tRange:
+    #         print(B)
+    #         objVals.append(abs(Fitness2D([B, T])))
 
-    objVals = []
-    for B, T in zip(Bs, Ts):
-        objVals.append(abs(Fitness2D([B, T])))
     
     # Objective function mapping complete.
-    print("Objective function mapping complete! Moving on to models...")
-    randomVals = np.abs(modelRandom.predict(zip(Bs, Ts)))
-    halfVals = np.abs(modelHalf.predict(zip(Bs, Ts)))
-    endVals = np.abs(modelEnd.predict(zip(Bs, Ts)))
+    # print("Objective function mapping complete! Moving on to models...")
 
-    # Predict the function at every step of the model.
-    predictVals = []
-    for model in result.models:
-        predictVals.append(np.abs(model.predict(Bs, Ts)))
+    # # Predict the function at every step of the model.
+    # predictVals = []
+    # for model in result.models:
+    #     modelVals = []
+    #     for B in bRange:
+    #         for T in tRange:
+    #             modelVals.append(np.abs(model.predict(np.array([B, T]).reshape(1, -1))).tolist())
 
-    print("Model predictions complete! Sending to JSON...")
-    # Create the data dictionary. Numpy arrays cannot be serialised to JSON so we must use .tolist() to make them so.
-    dataDict = {"numIters": numIters, "Bs": Bs.tolist(), "Ts": Ts.tolist(), "objVals": objVals, "randomVals": randomVals.tolist(), "halfVals": halfVals.tolist(), "endVals": endVals.tolist(), "predictVals": predictVals.tolist()}
-    with open("visualise_iters_2d.txt", "w") as outputFile:
-        # NOTE: This is in write mode, so will erase all previous data on that file.
-        json.dump(dataDict, outputFile)
+    #     predictVals.append(modelVals)
+
+    # print("Model predictions complete! Sending to JSON...")
+    # # Create the data dictionary. Numpy arrays cannot be serialised to JSON so we must use .tolist() to make them so.
+    # dataDict = {"numIters": numIters, "bRange": bRange.tolist(), "tRange": tRange.tolist(), "objVals": objVals, "predictVals": predictVals}
+    # with open("visualise_iters_2d.txt", "w") as outputFile:
+    #     # NOTE: This is in write mode, so will erase all previous data on that file.
+    #     json.dump(dataDict, outputFile)
 
     # JSON dump complete. Create the tree DOT files.
-    print("Printing a tree from each forest to a DOT file...")
-    randomTree = modelRandom.estimators_[-1]
-    export_graphviz(randomTree, out_file = "random_tree_2d.dot", precision = 2, impurity = False)
-    halfTree = modelHalf.estimators_[-1]
-    export_graphviz(halfTree, out_file = "half_tree_2d.dot", precision = 2, impurity = False)
+    print("Printing a tree from each (important) forest to a DOT file...")
+    # randomTree = modelRandom.estimators_[-1]
+    # export_graphviz(randomTree, out_file = "random_tree_2d.dot", precision = 2, impurity = False)
+    # halfTree = modelHalf.estimators_[-1]
+    # export_graphviz(halfTree, out_file = "half_tree_2d.dot", precision = 2, impurity = False)
     endTree = modelEnd.estimators_[-1]
     export_graphviz(endTree, out_file = "end_tree_2d.dot", precision = 2, impurity = False)
+
+    resultDataframe = pd.DataFrame(result.x_iters, columns = [r"$|\textbf{B}_{\textrm{1}}|$", r"$\theta_{\textrm{B}}$"])
+    explainer = shap.TreeExplainer(modelEnd)
+    shapValues = explainer.shap_values(resultDataframe)
+
+    shap.summary_plot(shapValues, resultDataframe)
 
     return
 
 if __name__ == "__main__":
     #GenerateModels1D(100)
 
-    GenerateModels2D(100)
+    GenerateModels2D(1000)

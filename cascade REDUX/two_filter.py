@@ -12,6 +12,7 @@ from sklearn.tree import export_graphviz
 from tqdm import tqdm
 import pandas as pd
 import shap
+import scipy.optimize as opt
 
 # Define some global parameters.
 globalDetuning = np.linspace(-25000, 25000, 1000)
@@ -117,7 +118,6 @@ def Optimise(numIters):
 
     problemBounds = [(10., 1300.), (40., 230.), (0., 90.), (0., 90.), (0., 90.), (10., 1300.), (40., 230.), (0., 90.), (0., 90.)]
 
-    #result = skopt.forest_minimize(TwoFilterFitness, problemBounds, verbose = True, n_calls = numIters, n_random_starts = int(np.ceil(numIters/10)), base_estimator = "ET")
     optimizer = skopt.Optimizer(dimensions = problemBounds, n_random_starts = int(np.ceil(numIters/10)), base_estimator = "ET")
 
     for _ in tqdm(range(numIters)):
@@ -132,6 +132,11 @@ def Optimise(numIters):
         pointVal = TwoFilterFitness(nextPoint)
 
         result = optimizer.tell(nextPoint, pointVal)
+
+    # Fine tune the result.
+    result = opt.minimize(TwoFilterFitness, np.copy(result.x), method = 'L-BFGS-B', bounds = problemBounds)
+
+    #result = opt.differential_evolution(TwoFilterFitness, problemBounds, maxiter = int(np.ceil(numIters/135)), disp = True, polish = True, seed = 69)
 
     print("Result determined for cascaded filters! Here are the stats:")
     print("Best figure of merit: " + str(-1 * result.fun))
@@ -236,10 +241,10 @@ if __name__ == "__main__":
     #LiteratureTest()
 
     # Run the optimisation.
-    #Optimise(6000)
+    Optimise(2000)
 
     # Determine the sensitivity of variables.
-    #Sensitivity([314, 109, 50, 86, 59, 199, 77, 77, 2])
+    #Sensitivity([291.609715, 112.04673543, 29.15640528, 86.93851957, 64.35724363, 248.5840155, 56.13930178, 10.85376986, 16.93008379])
 
     # Obtain SHAP importance.
-    ShapImportance(1000)
+    #ShapImportance(10000)
