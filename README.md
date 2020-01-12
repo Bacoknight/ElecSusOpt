@@ -1,3 +1,4 @@
 # ElecSusOpt
 
-These modules are for use in my 4th year MPhys project, which has the title "Optimisation of Atomic Filters".
+These modules were used throughout my final year dissertation. The disseration can be found at: https://bit.ly/2EeMUcA.
+Note: This repository is no longer being maintained.
